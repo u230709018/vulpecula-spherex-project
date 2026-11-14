@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPHEREx Blink</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#141923; --line:#2a3242; --text:#e6e9ef; --dim:#8b95a7; --accent:#ffb454; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:20px 16px; display:grid; grid-template-columns:300px 1fr; gap:24px; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; } }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--dim); margin:0 0 16px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  label { display:block; color:var(--dim); font-size:12px; margin:10px 0 3px; }
+  input, select, button { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:100%; }
+  input[type=range] { padding:0; }
+  input[type=checkbox] { width:auto; margin-right:6px; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#1a1205; border-color:var(--accent); font-weight:600; margin-top:14px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .presets { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .presets button { width:auto; font-size:12px; padding:3px 8px; }
+  .check { display:flex; align-items:center; color:var(--text); font-size:14px; margin-top:12px; }
+  #view { position:relative; width:100%; max-width:560px; aspect-ratio:1; background:#000; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  canvas { width:100%; height:100%; image-rendering:pixelated; display:block; }
+  /* reticle: four short ticks around the centre, i.e. the coordinates entered */
+  .tick { position:absolute; background:var(--accent); opacity:.8; }
+  .tick.h { height:1px; width:5%; top:50%; } .tick.v { width:1px; height:5%; left:50%; }
+  .tick.l { left:38%; } .tick.r { left:57%; } .tick.t { top:38%; } .tick.b { top:57%; }
+  #label { font-variant-numeric:tabular-nums; margin:10px 0 6px; min-height:1.45em; }
+  #status { color:var(--dim); min-height:1.45em; }
+  .compass { position:absolute; left:8px; bottom:6px; color:var(--dim); font-size:11px; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>SPHEREx Blink</h1>
+    <p class="sub">Watch a patch of sky change over time in SPHEREx near-infrared images.</p>
+    <form class="panel" id="form">
+      <div class="row">
+        <div><label for="ra">RA (degrees)</label><input id="ra" required inputmode="decimal"></div>
+        <div><label for="dec">Dec (degrees)</label><input id="dec" required inputmode="decimal"></div>
+      </div>
+      <div class="presets" id="presets"></div>
+      <div class="row">
+        <div><label for="fov">Field of view (arcsec)</label><input id="fov" type="number" min="30" max="600" step="30" value="180"></div>
+        <div><label for="band">Detector</label>
+          <select id="band">
+            <option value="D1">D1 · 0.75–1.1 µm</option>
+            <option value="D2">D2 · 1.1–1.6 µm</option>
+            <option value="D3">D3 · 1.6–2.4 µm</option>
+            <option value="D4">D4 · 2.4–3.8 µm</option>
+            <option value="D5">D5 · 3.8–4.4 µm</option>
+            <option value="D6">D6 · 4.4–5.0 µm</option>
+          </select></div>
+      </div>
+      <button class="primary">Load images</button>
+    </form>
+    <div class="panel" style="margin-top:12px">
+      <label class="check"><input type="checkbox" id="coadd" checked>Combine images of each visit</label>
+      <label for="speed">Blink interval: <span id="speedv"></span> ms</label>
+      <input id="speed" type="range" min="100" max="1500" step="50" value="500">
+      <label for="hi">Brightness limit: <span id="hiv"></span> σ</label>
+      <input id="hi" type="range" min="3" max="300" step="1" value="20">
+    </div>
+  </section>
+  <section>
+    <div id="view">
+      <canvas id="canvas" width="1" height="1"></canvas>
+      <div class="tick h l"></div><div class="tick h r"></div><div class="tick v t"></div><div class="tick v b"></div>
+      <div class="compass">N up · E left</div>
+    </div>
+    <div id="label"></div>
+    <div class="row" style="max-width:560px; grid-template-columns:90px 1fr">
+      <button id="play" type="button">Pause</button>
+      <input id="scrub" type="range" min="0" max="0" value="0">
+    </div>
+    <div id="status">Enter coordinates or pick a test target.</div>
+  </section>
+</main>
+<script>
+// Test targets from the challenge. Positions are approximate for epoch ~2026
+// (catalogue position moved by the catalogue proper motion).
+const PRESETS = {
+  "Barnard's Star": [269.4464, 4.7686],
+  "Eps Indi B": [331.0960, -56.8010],
+  "WISE 0855": [133.7700, -7.2430],
+  "RW Aur": [76.9564, 30.4014],
+  "R Dra": [248.1675, 66.7550],
+};
+const VISIT_GAP_DAYS = 30;   // images further apart than this belong to different visits
+const $ = id => document.getElementById(id);
+const ctx = $("canvas").getContext("2d");
+
+let raw = [];      // loaded cutouts: {mjd, px: Float32Array (background removed), n}
+let frames = [];   // what is being played: {label, px (in units of noise sigma), n}
+let current = 0, timer = null, loadId = 0;
+
+function median(values) {
+  const v = Float32Array.from(values).sort();
+  return v.length ? v[v.length >> 1] : 0;
+}
+const finite = px => px.filter(Number.isFinite);
+const date = mjd => new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
+
+// Scale an image to units of its own noise, so one brightness slider fits every frame.
+function toSigma(px) {
+  const sigma = 1.4826 * median(finite(px).map(Math.abs)) || 1;
+  return px.map(v => v / sigma);
+}
+
+// Median of several cutouts, pixel by pixel, skipping missing (NaN) pixels.
+// A median (not a mean) drops cosmic-ray hits that appear in a single image.
+function combine(list) {
+  const out = new Float32Array(list[0].px.length);
+  for (let i = 0; i < out.length; i++) {
+    const values = list.map(f => f.px[i]).filter(Number.isFinite);
+    out[i] = values.length ? median(values) : NaN;
+  }
+  return out;
+}
+
+// Build the playlist from the loaded cutouts: either every image, or one combined image per visit.
+function rebuild() {
+  const sorted = [...raw].sort((a, b) => a.mjd - b.mjd);
+  if ($("coadd").checked) {
+    const visits = [];
+    for (const f of sorted) {
+      const last = visits[visits.length - 1];
+      if (last && f.mjd - last[last.length - 1].mjd < VISIT_GAP_DAYS) last.push(f);
+      else visits.push([f]);
+    }
+    frames = visits.map(v => ({
+      n: v[0].n, px: toSigma(combine(v)),
+      label: `${date(v[0].mjd)} to ${date(v[v.length - 1].mjd)} · ${v.length} images`,
+    }));
+  } else {
+    frames = sorted.map(f => ({ n: f.n, px: toSigma(f.px), label: date(f.mjd) }));
+  }
+  $("scrub").max = Math.max(frames.length - 1, 0);
+  current = Math.min(current, Math.max(frames.length - 1, 0));
+  draw();
+}
+
+function draw() {
+  const f = frames[current];
+  if (!f) { $("label").textContent = ""; ctx.clearRect(0, 0, $("canvas").width, $("canvas").height); return; }
+  const lo = -2, hi = +$("hi").value;
+  const img = ctx.createImageData(f.n, f.n);
+  if ($("canvas").width !== f.n) $("canvas").width = $("canvas").height = f.n;
+  for (let i = 0; i < f.px.length; i++) {
+    // square-root stretch between lo and hi sigma; missing pixels stay black
+    const t = Math.min(Math.max((f.px[i] - lo) / (hi - lo), 0), 1);
+    const g = Number.isFinite(t) ? Math.sqrt(t) * 255 : 0;
+    img.data.set([g, g, g, 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  $("scrub").value = current;
+  $("label").textContent = `${current + 1} / ${frames.length} · ${$("band").value} · ${f.label}`;
+}
+
+function play(on) {
+  clearInterval(timer);
+  timer = on ? setInterval(() => { if (frames.length) { current = (current + 1) % frames.length; draw(); } }, +$("speed").value) : null;
+  $("play").textContent = on ? "Pause" : "Play";
+}
+
+async function load() {
+  const id = ++loadId;
+  const ra = +$("ra").value, dec = +$("dec").value, fov = +$("fov").value, band = $("band").value;
+  location.hash = new URLSearchParams({ ra, dec, fov, band });
+  raw = []; current = 0; rebuild();
+  $("status").textContent = "Searching the SPHEREx archive…";
+  try {
+    const all = await (await fetch(`/api/search?ra=${ra}&dec=${dec}`)).json();
+    const queue = all.filter(r => r.band === band);
+    const total = queue.length;
+    let done = 0, failed = 0;
+    if (!total) { $("status").textContent = "No SPHEREx images cover this position yet."; return; }
+    // six downloads at a time; each finished cutout joins the animation immediately
+    const worker = async () => {
+      while (queue.length && id === loadId) {
+        const r = queue.shift();
+        try {
+          const res = await fetch(`/api/cutout?uri=${encodeURIComponent(r.uri)}&ra=${ra}&dec=${dec}&fov=${fov}`);
+          if (!res.ok) throw new Error(res.status);
+          const px = new Float32Array(await res.arrayBuffer());
+          if (id !== loadId) return;
+          if (px.length) {
+            const bg = median(finite(px));
+            raw.push({ mjd: r.mjd, n: Math.sqrt(px.length), px: px.map(v => v - bg) });
+            rebuild();
+          }
+        } catch (e) { failed++; console.warn("cutout failed", r.uri, e); }
+        done++;
+        $("status").textContent = `Loaded ${done} of ${total} images (${raw.length} usable${failed ? `, ${failed} failed` : ""}).`;
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+  } catch (e) {
+    $("status").textContent = "Could not reach the archive: " + e.message;
+  }
+}
+
+for (const [name, [ra, dec]] of Object.entries(PRESETS)) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = name;
+  b.onclick = () => { $("ra").value = ra; $("dec").value = dec; load(); };
+  $("presets").append(b);
+}
+$("form").onsubmit = e => { e.preventDefault(); load(); };
+$("coadd").onchange = rebuild;
+$("hi").oninput = () => { $("hiv").textContent = $("hi").value; draw(); };
+$("speed").oninput = () => { $("speedv").textContent = $("speed").value; if (timer) play(true); };
+$("scrub").oninput = () => { current = +$("scrub").value; play(false); draw(); };
+$("play").onclick = () => play(!timer);
+$("hiv").textContent = $("hi").value; $("speedv").textContent = $("speed").value;
+play(true);
+
+// Coordinates in the URL (#ra=..&dec=..&fov=..&band=..) load straight away.
+const params = new URLSearchParams(location.hash.slice(1));
+if (params.has("ra") && params.has("dec")) {
+  for (const k of ["ra", "dec", "fov", "band"]) if (params.has(k)) $(k).value = params.get(k);
+  load();
+}
+</script>
+</body>
+</html>
