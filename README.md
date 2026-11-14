@@ -47,7 +47,10 @@ A view can be shared as a link: `http://localhost:8000/#ra=269.4464&dec=4.7686&f
 - Within one detector the wavelength of a source changes from exposure to exposure,
   so brightness in single exposures is not directly comparable.
 - Saturated pixels (cores of very bright stars) are missing in the data and show as black.
-- Checked on Barnard's Star (motion clearly visible). Other test targets are not yet verified.
+- Checked on Barnard's Star (D2) and WISE 0855 (D6, 11-17 sigma per visit): both move
+  between visits while background stars stay fixed. Eps Indi B, RW Aur and R Dra are
+  not yet verified.
+- WISE 0855 is only visible in detectors D5 and D6 (3.8-5.0 microns).
 
 ## Data
 

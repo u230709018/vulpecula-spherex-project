@@ -82,14 +82,15 @@
   </section>
 </main>
 <script>
-// Test targets from the challenge. Positions are approximate for epoch ~2026
-// (catalogue position moved by the catalogue proper motion).
+// Test targets from the challenge: [RA, Dec, detector to start with].
+// Positions are approximate for epoch ~2026 (catalogue position moved by the
+// catalogue proper motion). WISE 0855 is a ~250 K object, only visible in D5/D6.
 const PRESETS = {
-  "Barnard's Star": [269.4464, 4.7686],
-  "Eps Indi B": [331.0960, -56.8010],
-  "WISE 0855": [133.7700, -7.2430],
-  "RW Aur": [76.9564, 30.4014],
-  "R Dra": [248.1675, 66.7550],
+  "Barnard's Star": [269.4464, 4.7686, "D2"],
+  "Eps Indi B": [331.0960, -56.8010, "D2"],
+  "WISE 0855": [133.7600, -7.2422, "D6"],
+  "RW Aur": [76.9564, 30.4014, "D2"],
+  "R Dra": [248.1675, 66.7550, "D2"],
 };
 const VISIT_GAP_DAYS = 30;   // images further apart than this belong to different visits
 const $ = id => document.getElementById(id);
@@ -205,10 +206,10 @@ async function load() {
   }
 }
 
-for (const [name, [ra, dec]] of Object.entries(PRESETS)) {
+for (const [name, [ra, dec, band]] of Object.entries(PRESETS)) {
   const b = document.createElement("button");
   b.type = "button"; b.textContent = name;
-  b.onclick = () => { $("ra").value = ra; $("dec").value = dec; load(); };
+  b.onclick = () => { $("ra").value = ra; $("dec").value = dec; $("band").value = band; load(); };
   $("presets").append(b);
 }
 $("form").onsubmit = e => { e.preventDefault(); load(); };

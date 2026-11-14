@@ -4,8 +4,10 @@ Run:  py -m uvicorn server:app --port 8000
 Open: http://localhost:8000
 """
 import hashlib
+import json
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
@@ -21,6 +23,7 @@ HERE = Path(__file__).parent
 CACHE = HERE / "cache"
 (CACHE / "hdr").mkdir(parents=True, exist_ok=True)
 (CACHE / "cut").mkdir(parents=True, exist_ok=True)
+(CACHE / "search").mkdir(parents=True, exist_ok=True)
 
 TAP = "https://irsa.ipac.caltech.edu/TAP/sync"
 S3 = "https://nasa-irsa-spherex.s3.amazonaws.com/"
@@ -63,6 +66,10 @@ def index():
 @app.get("/api/search")
 def search(ra: float, dec: float):
     """All SPHEREx spectral images whose footprint contains the position."""
+    # The archive query is slow and sometimes times out, so keep each answer for a day.
+    f = CACHE / "search" / (sha(f"{ra}|{dec}") + ".json")
+    if f.exists() and time.time() - f.stat().st_mtime < 86400:
+        return json.loads(f.read_text())
     query = (
         "SELECT a.uri, p.energy_bandpassname, p.time_bounds_lower "
         "FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid "
@@ -72,7 +79,9 @@ def search(ra: float, dec: float):
     text = http_get(f"{TAP}?FORMAT=csv&QUERY={quote(query)}").text
     rows = [line.split(",") for line in text.strip().splitlines()[1:]]
     out = [{"uri": u, "band": b[-2:], "mjd": float(t)} for u, b, t in rows]
-    return sorted(out, key=lambda r: r["mjd"])
+    out.sort(key=lambda r: r["mjd"])
+    f.write_text(json.dumps(out))
+    return out
 
 
 def load_wcs(uri):
