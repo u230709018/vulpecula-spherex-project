@@ -1,0 +1,6 @@
+astropy==8.0.2
+astroquery==0.4.11
+numpy==2.5.4
+reproject==0.21.0
+fastapi==0.162.7
+uvicorn==0.54.0

@@ -1,0 +1,181 @@
+"""
+Name resolution, proper-motion propagation, Gaia DR3 overlay and known
+Solar System object lookup.
+
+Parts of this file were written with the assistance of an AI coding assistant
+(Claude, Anthropic) and reviewed by the team. See README "Use of AI".
+"""
+from __future__ import annotations
+
+import csv
+import io
+import json
+import re
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+import numpy as np
+from astropy.time import Time
+
+HERE = Path(__file__).resolve().parent
+TARGETS = json.loads((HERE / "targets.json").read_text())["targets"]
+UA = {"User-Agent": "spherex-timemachine/0.1 (NASA Space Apps 2026 project)"}
+
+
+def _get(url: str, timeout: float = 30, data: bytes | None = None) -> str:
+    req = urllib.request.Request(url, data=data, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+
+# --------------------------------------------------------------------------- #
+# Proper motion
+# --------------------------------------------------------------------------- #
+def propagate(ra: float, dec: float, pmra: float, pmdec: float,
+              ref_epoch: float, jyear: float) -> tuple[float, float]:
+    """Linear proper-motion propagation (mas/yr; pmra includes cos(dec))."""
+    dt = jyear - ref_epoch
+    dec_t = dec + pmdec * dt / 3.6e6
+    ra_t = ra + pmra * dt / 3.6e6 / np.cos(np.radians(dec))
+    return float(ra_t % 360.0), float(dec_t)
+
+
+def mjd_to_jyear(mjd: float) -> float:
+    return float(Time(mjd, format="mjd").jyear)
+
+
+# --------------------------------------------------------------------------- #
+# Name resolution: built-in table -> CDS Sesame
+# --------------------------------------------------------------------------- #
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def resolve(query: str) -> dict | None:
+    q = _norm(query)
+    for t in TARGETS:
+        if q == _norm(t["name"]) or q in (_norm(a) for a in t["aliases"]) or q == t["id"]:
+            return {**{k: t[k] for k in ("name", "ra", "dec", "pmra", "pmdec", "ref_epoch", "kind", "note")},
+                    "source": "built-in"}
+    try:
+        xml = _get("https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?" + urllib.parse.quote(query), timeout=20)
+    except Exception:
+        return None
+    ra = re.search(r"<jradeg>([^<]+)</jradeg>", xml)
+    dec = re.search(r"<jdedeg>([^<]+)</jdedeg>", xml)
+    if not (ra and dec):
+        return None
+    pm = re.search(r"<pmRA>([^<]+)</pmRA>.*?<pmDE>([^<]+)</pmDE>", xml, re.S)
+    oname = re.search(r"<oname>([^<]+)</oname>", xml)
+    return {"name": oname.group(1) if oname else query,
+            "ra": float(ra.group(1)), "dec": float(dec.group(1)),
+            "pmra": float(pm.group(1)) if pm else 0.0, "pmdec": float(pm.group(2)) if pm else 0.0,
+            "ref_epoch": 2000.0, "kind": "", "note": "", "source": "CDS Sesame"}
+
+
+# --------------------------------------------------------------------------- #
+# Gaia DR3 (ESA TAP, MAST VO cone search as fallback)
+# --------------------------------------------------------------------------- #
+def _gaia_esa(ra, dec, radius_deg, gmax):
+    q = ("SELECT TOP 3000 source_id, ra, dec, pmra, pmdec, parallax, phot_g_mean_mag "
+         "FROM gaiadr3.gaia_source WHERE 1=CONTAINS(POINT('ICRS',ra,dec),"
+         f"CIRCLE('ICRS',{ra},{dec},{radius_deg})) AND phot_g_mean_mag < {gmax}")
+    body = urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": q}).encode()
+    txt = _get("https://gea.esac.esa.int/tap-server/tap/sync", timeout=40, data=body)
+    return list(csv.DictReader(io.StringIO(txt)))
+
+
+def _gaia_mast(ra, dec, radius_deg, gmax):
+    url = ("https://gsss.stsci.edu/webservices/vo/CatalogSearch.aspx?"
+           f"RA={ra}&DEC={dec}&SR={radius_deg}&CAT=GAIADR3&FORMAT=CSV&MAXOBJ=3000")
+    txt = _get(url, timeout=40)
+    lines = [l for l in txt.splitlines() if not l.startswith("#")]
+    rows = list(csv.DictReader(io.StringIO("\n".join(lines))))
+    return [r for r in rows if r.get("phot_g_mean_mag") and float(r["phot_g_mean_mag"]) < gmax]
+
+
+def gaia_sources(ra: float, dec: float, radius_deg: float, jyears: list[float], gmax: float = 19.0) -> dict:
+    """Gaia DR3 sources propagated from J2016.0 to each requested epoch."""
+    rows, provider = None, None
+    for name, fn in (("ESA Gaia Archive", _gaia_esa), ("MAST", _gaia_mast)):
+        try:
+            rows, provider = fn(ra, dec, radius_deg, gmax), name
+            break
+        except Exception:
+            continue
+    if rows is None:
+        return {"provider": None, "sources": [], "error": "Gaia services unreachable"}
+
+    def f(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    out = []
+    for r in rows:
+        r_ra, r_dec = f(r.get("ra")), f(r.get("dec"))
+        if r_ra is None or r_dec is None:
+            continue
+        pmra, pmdec = f(r.get("pmra")), f(r.get("pmdec"))
+        has_pm = pmra is not None and pmdec is not None
+        pos = [propagate(r_ra, r_dec, pmra if has_pm else 0, pmdec if has_pm else 0, 2016.0, jy) for jy in jyears]
+        out.append({"source_id": r.get("source_id"), "g": f(r.get("phot_g_mean_mag")),
+                    "pmra": pmra, "pmdec": pmdec, "parallax": f(r.get("parallax")),
+                    "pm_total": float(np.hypot(pmra, pmdec)) if has_pm else None,
+                    "positions": pos})
+    return {"provider": provider, "sources": out}
+
+
+# --------------------------------------------------------------------------- #
+# Known Solar System objects (JPL Small-Body Identification API)
+# --------------------------------------------------------------------------- #
+def _sexa_to_deg(ra_s: str, dec_s: str) -> tuple[float, float]:
+    h, m, s = (float(x) for x in re.split(r"[: ]+", ra_s.strip()))
+    sign = -1 if dec_s.strip().startswith("-") else 1
+    d, dm, ds = (abs(float(x)) for x in re.split(r"[: '\"]+", dec_s.strip().lstrip("+-")) if x)
+    return 15 * (h + m / 60 + s / 3600), sign * (d + dm / 60 + ds / 3600)
+
+
+def _fmt_ra(ra):
+    h = ra / 15
+    return f"{int(h):02d}-{int(h * 60 % 60):02d}-{h * 3600 % 60:05.2f}"
+
+
+def _fmt_dec(dec):
+    s = "M" if dec < 0 else ""
+    d = abs(dec)
+    return f"{s}{int(d):02d}-{int(d * 60 % 60):02d}-{d * 3600 % 60:04.1f}"
+
+
+def known_small_bodies(ra: float, dec: float, half_width_deg: float, mjd: float) -> list[dict]:
+    t = Time(mjd, format="mjd").to_datetime().strftime("%Y-%m-%d_%H:%M:%S")
+    # Single pass (fast, ~arcsec-level accuracy is plenty at 6" pixels); two-pass often times out.
+    url = ("https://ssd-api.jpl.nasa.gov/sb_ident.api?mpc-code=500"
+           f"&obs-time={t}&fov-ra-center={_fmt_ra(ra)}&fov-dec-center={_fmt_dec(dec)}"
+           f"&fov-ra-hwidth={half_width_deg:.4f}&fov-dec-hwidth={half_width_deg:.4f}")
+    data = json.loads(_get(url, timeout=60))
+    fields = data.get("fields_second") or data.get("fields_first") or []
+    rows = data.get("data_second_pass") or data.get("data_first_pass") or []
+    out = []
+    for r in rows:
+        rec = dict(zip(fields, r))
+        try:
+            ra_d, dec_d = _sexa_to_deg(rec["Astrometric RA (hh:mm:ss)"], rec["Astrometric Dec (dd mm'ss\")"])
+        except Exception:
+            continue
+        try:
+            vmag = float(rec.get("Visual magnitude (V)"))
+        except (TypeError, ValueError):
+            vmag = None
+        # The single-pass list covers a padded region; keep what is inside the field and
+        # bright enough for SPHEREx single exposures (~V 21).
+        dra = (ra_d - ra + 180) % 360 - 180
+        if abs(dra * np.cos(np.radians(dec))) > half_width_deg or abs(dec_d - dec) > half_width_deg:
+            continue
+        if vmag is not None and vmag > 21.0:
+            continue
+        out.append({"name": rec.get("Object name", "").strip(), "ra": ra_d, "dec": dec_d, "vmag": vmag,
+                    "ra_rate": rec.get("RA rate (\"/h)"), "dec_rate": rec.get("Dec rate (\"/h)")})
+    return sorted(out, key=lambda o: o["vmag"] if o["vmag"] is not None else 99)

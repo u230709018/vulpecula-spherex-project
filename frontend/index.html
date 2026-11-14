@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPHEREx Time Machine</title>
+  <meta name="description" content="Blink NASA SPHEREx infrared images of any patch of sky to find moving and variable objects, with on-the-fly 0.75-5 micron spectra.">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
+  <script type="module">
+    import A from "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js";
+    window.A = A;
+  </script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">◐</span>
+    <div>
+      <h1>SPHEREx Time Machine</h1>
+      <p class="tagline">Blink the infrared sky. Spot what moves. Read its spectrum.</p>
+    </div>
+  </div>
+  <form id="searchForm" class="search" autocomplete="off">
+    <select id="qmode" aria-label="Search type" title="Sky position: a fixed patch of sky. Solar System object: follow an asteroid or comet through the SPHEREx images.">
+      <option value="sky">Sky position</option>
+      <option value="sso">Solar System object</option>
+    </select>
+    <input id="q" type="text" placeholder="Object name or RA Dec (e.g. Barnard's Star, 269.45 4.69, 08:55:10.8 -07:14:42)" aria-label="Object name or coordinates">
+    <label class="fov">FOV
+      <select id="fov" aria-label="Field of view">
+        <option value="3">3′</option>
+        <option value="5" selected>5′</option>
+        <option value="8">8′</option>
+        <option value="12">12′</option>
+      </select>
+    </label>
+    <button type="submit" class="primary">Load</button>
+  </form>
+  <div class="demos" id="demos" aria-label="Demo targets"></div>
+  <div class="demos" id="candidates" hidden></div>
+</header>
+
+<main class="layout">
+  <section class="viewer card">
+    <div class="viewer-head">
+      <div>
+        <h2 id="targetName">Choose a target</h2>
+        <p id="targetInfo" class="muted">Enter coordinates or pick a demo target above.</p>
+      </div>
+      <div class="badges" id="badges"></div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="img" width="560" height="560" aria-label="SPHEREx image"></canvas>
+      <canvas id="overlay" width="560" height="560"></canvas>
+      <div class="epoch-label" id="epochLabel"></div>
+      <div class="readout" id="readout"></div>
+      <div class="progress" id="progress" hidden>
+        <div class="spinner"></div>
+        <p id="progressMsg">Loading…</p>
+        <div class="bar"><div id="progressBar"></div></div>
+        <p class="muted small">First load of a new field queries NASA/IPAC IRSA live (1–4 min). Cached fields load instantly.</p>
+      </div>
+      <div class="empty" id="empty">
+        <p>SPHEREx maps the whole sky every six months in 102 infrared colours.<br>
+        Pick a target to watch it change over time.</p>
+      </div>
+    </div>
+
+    <div class="timeline" id="timeline" aria-label="Epochs"></div>
+
+    <div class="controls">
+      <div class="group">
+        <button id="playBtn" title="Play / pause (Space)">⏸</button>
+        <button id="prevBtn" title="Previous epoch (←)">◀</button>
+        <button id="nextBtn" title="Next epoch (→)">▶</button>
+        <label>Speed <input id="speed" type="range" min="150" max="1500" step="50" value="600"></label>
+        <label>Zoom <input id="zoom" type="range" min="1" max="4" step="0.25" value="1"></label>
+      </div>
+      <div class="group modes" role="radiogroup" aria-label="Display mode">
+        <button data-mode="blink" class="mode on" title="Blink (B)">Blink</button>
+        <button data-mode="diff" class="mode" title="Difference: each epoch minus the median of the others (D)">Difference</button>
+        <button data-mode="color" class="mode" title="False colour: blue=D1+D2, green=D3+D4, red=D5+D6 (C)">Colour</button>
+        <button data-mode="cdiff" class="mode" title="Colour difference: long (D5+D6) minus 3.3 µm methane band (D4) – brown dwarfs pop out">D6−D4</button>
+        <button data-mode="stack" class="mode" title="Stack: median of all visits. In Solar System object mode this is shift-and-add: the object adds up while background stars blur out (S)">Stack</button>
+      </div>
+      <div class="group dets" id="dets" aria-label="Detectors"></div>
+      <div class="group">
+        <label>Black <input id="lo" type="range" min="0" max="50" step="0.5" value="2"></label>
+        <label>White <input id="hi" type="range" min="90" max="100" step="0.1" value="99.5"></label>
+        <label>Asinh <input id="asinh" type="range" min="0" max="30" step="1" value="8"></label>
+        <label class="chk"><input id="invert" type="checkbox" checked> Invert</label>
+      </div>
+      <div class="group">
+        <label class="chk"><input id="ovTarget" type="checkbox" checked> Target track</label>
+        <label class="chk"><input id="ovGaia" type="checkbox"> Gaia DR3</label>
+        <label class="chk"><input id="ovAst" type="checkbox"> Known asteroids</label>
+        <label class="chk"><input id="ovBorder" type="checkbox" checked> Mark first epoch</label>
+      </div>
+    </div>
+    <div class="links" id="links"></div>
+  </section>
+
+  <section class="card context" id="contextCard" hidden>
+    <div class="card-head">
+      <h3>Sky context &amp; long-term motion</h3>
+      <label class="small muted">Background
+        <select id="survey">
+          <option value="https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/color">DSS2 colour (1980s–90s photographic plates)</option>
+          <option value="https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color">2MASS (1998–2001, near-IR)</option>
+          <option value="https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/W1">AllWISE W1 3.4 µm (2010)</option>
+          <option value="https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube">SPHEREx DR1 all-sky (2025–26)</option>
+        </select>
+      </label>
+    </div>
+    <div id="aladin"></div>
+    <p class="muted small" id="contextNote">Blue square: the SPHEREx field shown above. Orange track: the target's position over the decades, from its proper motion. Powered by Aladin Lite (CDS, Strasbourg).</p>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <div class="card-head">
+        <h3 id="specTitle">Spectrum</h3>
+        <button id="specReset" class="ghost small" hidden>Back to target</button>
+      </div>
+      <div id="specPlot" class="plot"></div>
+      <p class="muted small">Click anywhere on the image to measure the spectrum there. Colours = visit date; hollow grey = flagged pixels. Quick-look aperture photometry; for research-grade spectra use the <a href="https://irsa.ipac.caltech.edu/applications/spherex/" target="_blank" rel="noopener">IRSA Spectrophotometry Tool</a>.</p>
+    </section>
+    <section class="card">
+      <h3>Light curve</h3>
+      <div id="lcPlot" class="plot small-plot"></div>
+      <p class="muted small">Median flux per visit and detector, normalised per detector. Variable stars change; moving objects stay flat.</p>
+    </section>
+    <section class="card" id="warnCard" hidden>
+      <h3>Data-quality notes</h3>
+      <ul id="warnings" class="small"></ul>
+    </section>
+    <section class="card">
+      <h3>How to spot a mover</h3>
+      <ul class="small tips">
+        <li><b>Blink:</b> stars stay put; a dot that hops between epochs is moving.</li>
+        <li><b>Difference:</b> static stars vanish; a mover leaves a <i>dipole</i> (dark/bright pair).</li>
+        <li><b>D6−D4:</b> cold brown dwarfs are bright at 4.5 µm but dark in the 3.3 µm methane band.</li>
+        <li><b>No Gaia match?</b> A moving source invisible to Gaia is too cold for optical light – exactly how volunteers find brown dwarfs.</li>
+        <li><b>Beware artifacts:</b> ghosts and cosmic rays appear in one frame only, or move with the detector instead of the sky.</li>
+      </ul>
+    </section>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p>Data: NASA SPHEREx via NASA/IPAC Infrared Science Archive (IRSA). This tool makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration. DOIs: 10.26131/IRSA678 (DR1), 10.26131/IRSA662 (QR3).</p>
+  <p>This research has made use of the NASA/IPAC Infrared Science Archive, ESA Gaia DR3 (Gaia Collaboration 2023), the JPL Small-Body Identification API, CDS Sesame, and the Canadian Astronomy Data Centre (operated by the National Research Council of Canada with the support of the Canadian Space Agency). Built for the NASA Space Apps Challenge 2026. Not an official NASA product.</p>
+  <p class="muted">Keyboard: Space play/pause · ← → step · B blink · D difference · C colour · I invert · + − zoom</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+data/cache/
+scratch/
+output/
+.DS_Store
+.claude/

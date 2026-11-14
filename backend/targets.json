@@ -1,0 +1,45 @@
+{
+  "_comment": "Built-in demo targets. Positions/proper motions from CDS Sesame (J2000), except WISE 0855 whose challenge-supplied coordinates were verified against SPHEREx data to correspond to epoch ~2010.5. pm in mas/yr (pmra = mu_alpha*cos(dec)).",
+  "targets": [
+    {
+      "id": "barnard",
+      "name": "Barnard's Star",
+      "aliases": ["barnard", "barnards star", "barnard's star", "gj 699", "v2500 oph"],
+      "ra": 269.45208, "dec": 4.69336, "pmra": -802.0, "pmdec": 10362.0, "ref_epoch": 2000.0,
+      "kind": "high proper motion star",
+      "note": "Fastest-moving star on the sky (~10.4 arcsec/yr)."
+    },
+    {
+      "id": "eps_ind_b",
+      "name": "Epsilon Indi B",
+      "aliases": ["eps ind b", "epsilon indi b", "eps indi b", "epsilon indi ba"],
+      "ra": 331.04415, "dec": -56.78284, "pmra": 3982.0, "pmdec": -2467.0, "ref_epoch": 2000.0,
+      "kind": "binary brown dwarf",
+      "note": "A pair of brown dwarfs (Ba/Bb) orbiting the star Epsilon Indi A."
+    },
+    {
+      "id": "wise0855",
+      "name": "WISE 0855-0714",
+      "aliases": ["wise 0855", "wise0855", "wise j085510.83-071442.5", "wise 0855-0714"],
+      "ra": 133.795129, "dec": -7.245147, "pmra": -8118.0, "pmdec": 673.0, "ref_epoch": 2010.5,
+      "kind": "Y-type brown dwarf",
+      "note": "Coldest known brown dwarf; invisible in optical (no Gaia match). ~2 arcmin west of the challenge coordinates by 2025."
+    },
+    {
+      "id": "rw_aur",
+      "name": "RW Aurigae",
+      "aliases": ["rw aur", "rw aurigae"],
+      "ra": 76.95653, "dec": 30.40144, "pmra": 7.0, "pmdec": -20.0, "ref_epoch": 2000.0,
+      "kind": "variable star (young T Tauri binary)",
+      "note": "Irregular variable with deep dimming events."
+    },
+    {
+      "id": "r_dra",
+      "name": "R Draconis",
+      "aliases": ["r dra", "r draconis"],
+      "ra": 248.16761, "dec": 66.75498, "pmra": -21.0, "pmdec": 6.0, "ref_epoch": 2000.0,
+      "kind": "Mira variable",
+      "note": "Long-period variable (~246 d) in the SPHEREx north ecliptic pole deep field (thousands of images)."
+    }
+  ]
+}
