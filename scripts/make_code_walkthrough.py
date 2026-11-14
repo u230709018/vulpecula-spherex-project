@@ -198,6 +198,12 @@ P("Her isteğin parametreleri (yuvarlanmış koordinat, görüş alanı, işlem 
 PY(PL, "cutouts_for")
 P("Tıklanan bir noktanın tayfını ölçmek için ham kesitler gerekir. Son 4 alanın kesitleri bellekte tutulur; "
   "bellekte yoksa diskteki önbellekten yeniden okunur.")
+PY(PL, "result_from_cached_full")
+P("Tarih aralığı girilen alanın tarihsiz tam sonucu zaten kayıtlıysa arşive hiç sorulmaz: kayıtlı sonuçtan aralıkla örtüşen ziyaretler seçilir "
+  "ve kareler, tayf noktaları ile ışık eğrisi buna göre süzülür. Böylece demo hedeflerinde tarih filtresi anında çalışır ve IRSA yavaşken ya da "
+  "kapalıyken de çalışmaya devam eder. Süzme ziyaret bazındadır: aralıkla kısmen örtüşen bir ziyaret bütün olarak gösterilir. "
+  "Kayıtlı tam sonuç yoksa <code>None</code> döner ve normal iş (arşiv sorgusu, indirme) başlar; bu fonksiyonu <code>main.py</code> içindeki "
+  "<code>frames</code> uç noktası çağırır.")
 PY(PL, "spectrum_and_lightcurve")
 UL("Her kesitte fotometri yapılır. Hedef hareketliyse her ziyaret için o tarihteki konumu kullanılır.",
    "Noktalar dalga boyuna göre sıralanır: bu tayftır.",

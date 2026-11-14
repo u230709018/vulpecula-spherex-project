@@ -99,6 +99,14 @@ def frames(req: FramesRequest):
     for key in (pl.frames_key(params | {"preview": False}), pl.frames_key(params)):
         if pl.cached_result(key):
             return {"status": "done", "result_key": key}
+    if params["start"] or params["end"]:
+        # Date range on a field that is already stored without dates: no need to ask the archive.
+        try:
+            res = pl.result_from_cached_full(params)
+        except RuntimeError as err:
+            raise HTTPException(404, str(err))
+        if res:
+            return {"status": "done", "result_key": res["key"]}
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "running", "stage": "queued", "done": 0, "total": 1,

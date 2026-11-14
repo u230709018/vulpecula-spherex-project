@@ -43,6 +43,29 @@ def cached_result(key: str) -> dict | None:
     return json.loads(f.read_text()) if f.exists() else None
 
 
+def result_from_cached_full(p: dict) -> dict | None:
+    """A date range on a field whose full result without dates is already stored: answer from
+    that result instead of asking the archive again (it can be slow or down, and the stored demo
+    targets should keep working then). Done by visit: a visit that overlaps the range is kept
+    whole. Returns None if there is no stored full result."""
+    full = cached_result(frames_key(p | {"start": None, "end": None, "preview": False}))
+    if not full:
+        return None
+    lo, hi = p.get("start") or "0000", p.get("end") or "9999"        # ISO dates compare as text
+    keep = {e["epoch"] for e in full["epochs"] if e["date_end"] >= lo and e["date_start"] <= hi}
+    if not keep:
+        raise RuntimeError(f"No SPHEREx images of this position in the chosen dates. The images here "
+                           f"run from {full['epochs'][0]['date_start']} to {full['epochs'][-1]['date_end']}.")
+    res = full | {k: [x for x in full[k] if x["epoch"] in keep]
+                  for k in ("epochs", "frames", "images", "points", "lightcurve")}
+    res["key"] = frames_key(p | {"preview": False})
+    res["stats"] = full["stats"] | {"n_total": sum(e["n_available"] for e in res["epochs"]),
+                                    "n_downloaded": len(res["images"]), "n_used": len(res["images"]),
+                                    "rejected": {"failed": 0, "transient": 0}, "seconds": 0.0}
+    (RESULTS_DIR / f"{res['key']}.json").write_text(json.dumps(res))
+    return res
+
+
 def _remember(key: str, cutouts: list[sx.Cutout]):
     with _LRU_LOCK:
         _CUTOUT_LRU[key] = cutouts
