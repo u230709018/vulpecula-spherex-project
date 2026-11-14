@@ -43,6 +43,7 @@ class FramesRequest(BaseModel):
     max_per_cell: int = Field(8, ge=2, le=40)
     budget: int = Field(260, ge=20, le=1200)
     name: str | None = None
+    preview: bool = False             # quick first look with fewer images; see pipeline.PREVIEW_PER_CELL
 
 
 class MovingRequest(BaseModel):
@@ -92,15 +93,15 @@ def resolve(q: str = Query(..., min_length=1)):
 @app.post("/api/frames")
 def frames(req: FramesRequest):
     params = req.model_dump()
-    key = pl.job_key({k: v for k, v in params.items() if k != "name"})
-    params_for_key = {k: v for k, v in params.items() if k != "name"}
-    if pl.cached_result(key):
-        return {"status": "done", "result_key": key}
+    # A finished full-quality result always wins, also when only a preview was asked for.
+    for key in (pl.frames_key(params | {"preview": False}), pl.frames_key(params)):
+        if pl.cached_result(key):
+            return {"status": "done", "result_key": key}
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "running", "stage": "queued", "done": 0, "total": 1,
                         "message": "Queued...", "params": params}
-    EXECUTOR.submit(_run, job_id, params_for_key | {"name": params.get("name")})
+    EXECUTOR.submit(_run, job_id, params)
     return {"status": "running", "job_id": job_id}
 
 

@@ -11,6 +11,7 @@ A public web tool for the NASA Space Apps Challenge 2026 *"Planet X and SPHEREx"
 ## Features
 
 - **Blink** SPHEREx images of any position, one frame per visit (DR1 + QR3 + deep fields, queried live from NASA/IPAC IRSA, so newly released data appears automatically).
+- **Quick preview first**: a new field first loads with up to 3 images per visit and detector (about a third of the downloads), so there is something to look at early; the full-quality version (up to 8) loads in the background and replaces it without changing the visit on screen.
 - **Six detector arrays** selectable individually or combined; frames are co-added per visit and detector for signal-to-noise.
 - **Difference mode**: each visit minus the median of the other visits. Static stars cancel; movers leave a dipole.
 - **False-colour mode** (blue = D1+D2, green = D3+D4, red = D5+D6) and **D6−D4 mode**: cold brown dwarfs are bright at 4.5 µm but dark in the 3.3 µm methane band.

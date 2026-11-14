@@ -22,12 +22,19 @@ RESULTS_DIR = sx.ROOT / "data" / "results"
 _CUTOUT_LRU: "OrderedDict[str, list[sx.Cutout]]" = OrderedDict()
 _LRU_LOCK = threading.Lock()
 PIPELINE_VERSION = 5
+PREVIEW_PER_CELL = 3   # images per (visit, detector) in a preview; 3 still allows a median
 
 
 def job_key(p: dict) -> str:
     sig = json.dumps({k: (round(v, 5) if isinstance(v, float) else v) for k, v in sorted(p.items())}
                      | {"v": PIPELINE_VERSION})
     return hashlib.sha1(sig.encode()).hexdigest()[:16]
+
+
+def frames_key(p: dict) -> str:
+    """Cache key of a sky-position job. `preview` only enters the key when set, so the keys of
+    full results (including the pre-computed demo targets) are the same as before it existed."""
+    return job_key({k: v for k, v in p.items() if k != "name" and (k != "preview" or v)})
 
 
 def cached_result(key: str) -> dict | None:
@@ -96,9 +103,9 @@ def spectrum_and_lightcurve(cutouts, positions_by_epoch=None, ra=None, dec=None)
 
 
 def run_frames_job(p: dict, progress) -> dict:
-    """p: ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name."""
+    """p: ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name, preview."""
     t0 = time.time()
-    key = job_key({k: v for k, v in p.items() if k != "name"})
+    key = frames_key(p)
     size_deg = p["fov_arcmin"] / 60.0
 
     # Centre the field on the target's position in the middle of the SPHEREx data range.
@@ -111,6 +118,10 @@ def run_frames_job(p: dict, progress) -> dict:
     epochs = sx.group_epochs(records)
     n_total = len(records)
     chosen = sx.budget_select(records, p.get("max_per_cell", 8), p.get("budget", 260))
+    if p.get("preview"):
+        # Quick first look: fewer images per (visit, detector). Picked from the full selection,
+        # so the full job that follows finds these cutouts already on disk.
+        chosen = sx.budget_select(chosen, PREVIEW_PER_CELL, p.get("budget", 260))
     progress("query", 1, 1, f"{n_total} images in {len(epochs)} visits; downloading {len(chosen)}")
 
     paths = sx.fetch_all(chosen, ra_mid, dec_mid, size_deg,
@@ -154,7 +165,7 @@ def run_frames_job(p: dict, progress) -> dict:
     phot = spectrum_and_lightcurve(cutouts, positions_by_epoch=pos_by_epoch)
 
     result = {
-        "key": key, "name": p.get("name"), "target": {k: p.get(k) for k in ("ra", "dec", "pmra", "pmdec", "ref_epoch")},
+        "key": key, "preview": bool(p.get("preview")), "name": p.get("name"), "target": {k: p.get(k) for k in ("ra", "dec", "pmra", "pmdec", "ref_epoch")},
         "fov_arcmin": p["fov_arcmin"],
         "grid": {"crval": [ra_mid, dec_mid], "crpix": list(grid.wcs.crpix), "cdelt": list(grid.wcs.cdelt),
                  "shape": list(shape)},

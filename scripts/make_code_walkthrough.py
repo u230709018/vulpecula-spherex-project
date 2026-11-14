@@ -238,7 +238,7 @@ P("<code>FramesRequest</code>, gelen isteğin biçimini ve sınırlarını tanı
   "Sınır dışı bir değer gelirse FastAPI isteği kendiliğinden reddeder.")
 PY(MN, "_run")
 PY(MN, "frames")
-P("Yükleme 1–4 dakika sürebildiği için istek hemen yanıtlanır. Sonuç önbellekteyse “done” ve anahtar döner. "
+P("Yükleme dakikalar sürebildiği için istek hemen yanıtlanır. Tam sonuç ya da istenen önizleme önbellekteyse “done” ve anahtar döner. "
   "Değilse iş, en fazla 2 işi aynı anda çalıştıran bir havuza verilir ve bir iş numarası döner. "
   "<code>JOBS</code> sözlüğü işlerin durumunu tutar; birden çok iş parçacığı yazdığı için kilitle korunur.")
 PY(MN, "job")
@@ -294,9 +294,16 @@ P("İşaret katmanı ayrı bir tuvaldir: ilk ziyareti belirten kesikli çerçeve
   "hedefin tahmini izi, otomatik ipuçları, kayıtlı adaylar ve tıklanan nokta.")
 H2("8.6 Oynatma ve yükleme")
 JS(AJ, "play")
-JS(AJ, "runJob", head=18)
-P("<code>runJob</code> isteği gönderir ve iş bitene kadar 1,5 saniyede bir durumu sorar. <code>token</code>, kullanıcı bu sırada başka bir hedef "
+JS(AJ, "fetchResult")
+P("<code>fetchResult</code> isteği gönderir ve iş bitene kadar 1,5 saniyede bir durumu sorar. <code>token</code>, kullanıcı bu sırada başka bir hedef "
   "yüklerse eski isteğin sonucunun ekrana yazılmasını engeller.")
+JS(AJ, "runJob", head=11)
+JS(AJ, "upgradeToFull")
+P("<b>Önce önizleme, sonra tam sürüm.</b> Yeni bir alan için arayüz önce <code>preview: true</code> ile ister. Sunucu bu durumda ziyaret ve dedektör başına "
+  "8 yerine 3 görüntü indirir (<code>PREVIEW_PER_CELL</code>); bu 3 görüntü tam sürümün seçeceği 8 görüntünün içinden alınır, yani tam sürüm onları yeniden indirmez. "
+  "Önizleme ekrana gelince <code>upgradeToFull</code> tam sürümü arka planda ister ve hazır olunca aynı ziyarette kalarak yerine koyar. "
+  "Tam sonuç zaten önbellekteyse sunucu doğrudan onu döndürür ve önizleme hiç görünmez.")
+RNG(PL, r"chosen = sx.budget_select\(records", r"chosen = sx.budget_select\(chosen")
 JS(AJ, "onResult")
 H2("8.7 Öz hareketi SPHEREx'ten ölçme")
 JS(AJ, "measureMotion", head=32)

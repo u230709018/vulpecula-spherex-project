@@ -386,7 +386,8 @@ async function loadTarget(t, fov) {
   setHash();
   const body = { ra: t.ra, dec: t.dec, pmra: t.pmra || 0, pmdec: t.pmdec || 0, ref_epoch: t.ref_epoch || 2000,
                  fov_arcmin: fov, max_per_cell: 8, budget: 260, name: t.name || null };
-  runJob("/api/frames", body, "Could not load this field.");
+  // Ask for a quick preview first; the server answers with the full result if it already has it.
+  runJob("/api/frames", { ...body, preview: true }, "Could not load this field.", body);
 }
 async function loadObject(name, fov) {
   S.target = { name, sso: true, pmra: 0, pmdec: 0 }; S.fov = Math.min(fov || 4, 15); setFovOption(S.fov);
@@ -399,24 +400,41 @@ async function loadObject(name, fov) {
   if (name === "3I") Object.assign(body, { start: "2025-08-01", end: "2025-12-31" });  // demo: SPHEREx's two 3I/ATLAS campaigns
   runJob("/api/moving", body, "Could not track this object.");
 }
-async function runJob(path, body, failMsg) {
+/* Start a job (or get its cached result) and poll until it is done. Returns the result,
+   or null when the user has loaded something else in the meantime. */
+async function fetchResult(path, body, token, onProgress) {
+  let r = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  while (r.status === "running") {
+    await new Promise((res) => setTimeout(res, 1500));
+    if (S.pending !== token) return null;
+    const j = await api(`/api/jobs/${r.job_id}`);
+    onProgress(j);
+    if (j.status === "error") { const e = new Error(j.message); e.candidates = j.candidates; throw e; }
+    if (j.status === "done") r = { status: "done", result_key: j.result_key };
+  }
+  const res = await api(`/api/result/${r.result_key}`);
+  return S.pending === token ? res : null;
+}
+/* After a preview is on screen: load the full-quality result in the background and swap it in. */
+async function upgradeToFull(fullBody, token) {
+  const say = (text) => { const el = $("previewBadge"); if (el) el.textContent = text; };
+  try {
+    const res = await fetchResult("/api/frames", fullBody, token, (j) =>
+      say(`Quick preview · full quality: ${j.stage === "download" ? `${j.done}/${j.total} images` : "processing"}…`));
+    if (res) onResult(res, true);
+  } catch {
+    say("Quick preview only – the full-quality load failed, reload to retry");
+  }
+}
+async function runJob(path, body, failMsg, fullBody) {
   showProgress(true, "Contacting the SPHEREx archive…", 0.02);
   const token = Symbol(); S.pending = token;
   try {
-    let r = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    while (r.status === "running") {
-      await new Promise((res) => setTimeout(res, 1500));
-      if (S.pending !== token) return;
-      const j = await api(`/api/jobs/${r.job_id}`);
-      const frac = j.stage === "download" ? 0.1 + 0.75 * (j.done / Math.max(1, j.total)) : j.stage === "process" ? 0.9 : 0.05;
-      showProgress(true, j.message, frac);
-      if (j.status === "error") { const e = new Error(j.message); e.candidates = j.candidates; throw e; }
-      if (j.status === "done") r = { status: "done", result_key: j.result_key };
-    }
-    showProgress(true, "Rendering…", 0.97);
-    const res = await api(`/api/result/${r.result_key}`);
-    if (S.pending !== token) return;
+    const res = await fetchResult(path, body, token, (j) => showProgress(true, j.message,
+      j.stage === "download" ? 0.1 + 0.75 * (j.done / Math.max(1, j.total)) : j.stage === "process" ? 0.9 : 0.05));
+    if (!res) return;
     onResult(res);
+    if (res.preview && fullBody) upgradeToFull(fullBody, token);
   } catch (err) {
     showProgress(false);
     $("empty").hidden = false;
@@ -430,8 +448,9 @@ async function runJob(path, body, failMsg) {
   }
 }
 const isMoving = () => S.result && S.result.mode === "moving";
-function onResult(res) {
-  S.result = res; S.key = res.key; S.epochs = res.epochs; S.cur = 0;
+function onResult(res, keepView) {   // keepView: a full result replacing its preview – stay on the same visit
+  const cur = S.cur, playing = S.playing;
+  S.result = res; S.key = res.key; S.epochs = res.epochs; S.cur = keepView ? Math.min(cur, res.epochs.length - 1) : 0;
   if (res.mode === "moving") {
     S.dets = new Set(DETS);                 // each frame is a single detector image
     if (S.mode === "diff" || S.mode === "cdiff") S.mode = "blink";
@@ -447,8 +466,8 @@ function onResult(res) {
   $("specTitle").textContent = "Spectrum at target"; $("specReset").hidden = true;
   plotSpectrum(); plotLightcurve(); buildBadges(); buildWarnings(); buildLinks();
   if (!isMoving()) fetchGaia();
-  updateContext();
-  play(true);
+  if (!keepView) updateContext();
+  play(keepView ? playing : true);
 }
 function buildTimeline() {
   const tl = $("timeline"); tl.innerHTML = "";
@@ -490,6 +509,7 @@ function buildBadges() {
     return;
   }
   const span = S.epochs.length > 1 ? (S.epochs.at(-1).mjd - S.epochs[0].mjd) / 365.25 : 0;
+  if (r.preview) b.push(`<span class="badge warn" id="previewBadge" title="Shown first so you are not kept waiting: up to 3 images per visit and detector, so it is noisier and the spectrum has fewer points. The full version replaces it automatically.">Quick preview · full quality loading…</span>`);
   b.push(`<span class="badge info">${r.stats.n_used} images · ${S.epochs.length} visits · ${span.toFixed(1)} yr</span>`);
   if (r.stats.n_total > r.stats.n_downloaded)
     b.push(`<span class="badge" title="To stay fast, up to 8 images per visit and detector are used">${r.stats.n_total} images in archive${r.stats.n_total > 1000 ? " (deep field)" : ""}</span>`);
