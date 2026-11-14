@@ -384,7 +384,22 @@ function dateRange() {
   if ($("to").value) d.end = $("to").value;
   return d;
 }
+const SPHEREX_START = "2025-04-01";   // SPHEREx has no survey images before this date
+/* Impossible date ranges are refused at once, without asking the archive. Returns true if refused. */
+function badDates() {
+  const a = $("from").value, b = $("to").value, today = new Date().toISOString().slice(0, 10);
+  let msg = null;
+  if (a && b && a > b) msg = "The From date is after the To date.";
+  else if ((a && a < SPHEREX_START) || (b && b < SPHEREX_START))
+    msg = `SPHEREx has no images before ${SPHEREX_START}. Choose dates from then on, or leave the date boxes empty.`;
+  else if (a && a > today) msg = "The From date is in the future.";
+  if (!msg) return false;
+  S.pending = null; showProgress(false);
+  $("empty").hidden = false; $("empty").innerHTML = `<p><b>${msg}</b></p>`;
+  return true;
+}
 async function loadTarget(t, fov) {
+  if (badDates()) return;
   S.target = t; S.fov = fov; S.gaia = null; S.ast = null; S.spec = null; S.specLabel = null;
   $("ovAst").checked = false; $("candidates").hidden = true;
   $("empty").hidden = true; $("targetName").textContent = t.name || `${sexa(t.ra, true)} ${sexa(t.dec)}`;
@@ -397,6 +412,7 @@ async function loadTarget(t, fov) {
   runJob("/api/frames", { ...body, preview: true }, "Could not load this field.", body);
 }
 async function loadObject(name, fov) {
+  if (badDates()) return;
   S.target = { name, sso: true, pmra: 0, pmdec: 0 }; S.fov = Math.min(fov || 4, 15); setFovOption(S.fov);
   S.gaia = null; S.ast = null; S.spec = null; S.specLabel = null; $("ovAst").checked = false;
   $("empty").hidden = true; $("candidates").hidden = true;

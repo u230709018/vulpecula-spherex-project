@@ -37,10 +37,10 @@
       </select>
     </label>
     <label class="fov" title="Optional: only use SPHEREx images taken on or after this date. SPHEREx images start in 2025.">From
-      <input id="from" type="date" aria-label="First date">
+      <input id="from" type="date" min="2025-04-01" aria-label="First date">
     </label>
     <label class="fov" title="Optional: only use SPHEREx images taken up to this date.">To
-      <input id="to" type="date" aria-label="Last date">
+      <input id="to" type="date" min="2025-04-01" aria-label="Last date">
     </label>
     <button type="submit" class="primary">Load</button>
   </form>

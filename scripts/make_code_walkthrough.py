@@ -326,6 +326,10 @@ P("Her ayar adresin <code>#</code> sonrasına yazılır; adresi açan kişi ayn�
 H1("9. 14 Kasım'da eklenen özellikler")
 H2("9.1 Hatalı giriş uyarısı ve biçim rehberi")
 JS(AJ, "inputHelp")
+JS(AJ, "badDates")
+P("Tarih kutuları için anında kontrol: From, To'dan sonraysa, tarihlerden biri SPHEREx verisinin başlangıcından (Nisan 2025) önceyse "
+  "ya da From gelecekteyse arşive hiç sorulmadan mesaj gösterilir. <code>loadTarget</code> ve <code>loadObject</code> ilk iş bunu çağırır; "
+  "böylece arama kutusu, demo düğmeleri ve paylaşılan bağlantılar aynı kontrolden geçer.")
 JS(AJ, "submitQuery")
 UL("Koordinat ayrıştırıldı ama dakika/saniye 60'ı aşıyorsa ya da RA/Dec gökyüzü dışındaysa ayrı ayrı mesaj verilir.",
    "Metinde hiç harf yoksa (örneğin tek bir sayı) “eksik konum” denir; isim servisine boşuna gidilmez.",
