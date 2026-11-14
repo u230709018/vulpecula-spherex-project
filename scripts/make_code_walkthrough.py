@@ -152,6 +152,12 @@ P("Her (ziyaret, dedektör) hücresinden en fazla N görüntü seçilir; fazlas�
   "Binlerce görüntüsü olan derin alanlar böylece makul sürede yüklenir.")
 H2("3.5 Kesitleri indirme")
 PY(SC, "cutout_url")
+PY(SC, "_read_cutout")
+P("Bir kesit yaklaşık 4 MB'tır ve bunun 3,9 MB'ı hiç kullanmadığımız PSF tablosudur (<code>EPSF</code>). "
+  "Servis dosyanın bir bölümünü istemeye (HTTP Range) izin vermediği için indirme, EPSF başlığı görüldüğü anda kesilir; "
+  "böylece kesit başına yaklaşık 115 kB iner. EPSF'in arkasındaki küçük dalga boyu tablosu (<code>WCS-WAVE</code>) "
+  "aynı dedektörün bütün kesitlerinde bayt bayt aynıdır: dedektör başına bir kez tam dosya indirilir, tablo diske yazılır "
+  "ve diğer kesitlerin sonuna eklenir. Dosya düzeni beklenenden farklıysa dosyanın tamamı eskisi gibi okunur.")
 PY(SC, "fetch_cutout")
 P("IRSA'nın kesit servisi, dosya adresinin sonuna merkez ve boyut eklenince yalnızca o bölgeyi döndürür. "
   "Her kesit, adresinin özetiyle (SHA-1) adlandırılıp diske yazılır; aynı kesit ikinci kez indirilmez. "

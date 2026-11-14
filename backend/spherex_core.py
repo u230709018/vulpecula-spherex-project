@@ -19,7 +19,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import http.client
+import io
 import logging
+import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -165,8 +168,45 @@ def budget_select(records: list[ImageRecord], max_per_cell: int, total_budget: i
 # --------------------------------------------------------------------------- #
 # 4. Cutout download
 # --------------------------------------------------------------------------- #
+FITS_BLOCK = 2880                                  # FITS files are made of 2880-byte blocks
+_WAVE_LOCKS = [threading.Lock() for _ in range(10)]  # indexed by detector digit
+
+
 def cutout_url(rec: ImageRecord, ra: float, dec: float, size_deg: float) -> str:
     return f"{IRSA_BASE}{rec.uri}?center={ra:.6f},{dec:.6f}d&size={size_deg:.5f}"
+
+
+def _read_cutout(resp) -> bytes:
+    """Read a cutout, skipping its EPSF table where possible.
+
+    A cutout is ~4 MB, of which ~3.9 MB is the EPSF (PSF model) table that this tool never reads.
+    The HDUs arrive in the order IMAGE, FLAGS, VARIANCE, ZODI, EPSF, WCS-WAVE, and the service
+    ignores HTTP Range, so the download is stopped when the EPSF header shows up. The small
+    WCS-WAVE table behind it (needed for wavelengths) is byte-identical for all cutouts of one
+    detector, so it is kept from the first complete download and appended to the others.
+    If the layout is ever different, the whole file is read as before."""
+    head = b""
+    while True:
+        block = resp.read(FITS_BLOCK)
+        if block[:8] == b"XTENSION" and b"'EPSF" in block:
+            break
+        head += block
+        if len(block) < FITS_BLOCK:
+            return head                                   # no EPSF table: complete file
+    det = re.search(rb"DETECTOR=\s*(\d)", head)
+    if not det:
+        return head + block + resp.read()
+    with _WAVE_LOCKS[int(det.group(1))]:           # one full download per detector
+        wave_path = CACHE_DIR / f"wcs_wave_D{det.group(1).decode()}.bin"
+        if wave_path.exists():
+            return head + wave_path.read_bytes()
+        full = head + block + resp.read()
+        with fits.open(io.BytesIO(full)) as hdul:
+            if hdul[-1].name == "WCS-WAVE":
+                tmp = wave_path.with_suffix(f".part{threading.get_ident()}")
+                tmp.write_bytes(full[hdul[-1].fileinfo()["hdrLoc"]:])
+                tmp.replace(wave_path)
+        return full
 
 
 def fetch_cutout(url: str, retries: int = 4) -> Path | None:
@@ -177,7 +217,7 @@ def fetch_cutout(url: str, retries: int = 4) -> Path | None:
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(url, timeout=120) as resp:
-                data = resp.read()
+                data = _read_cutout(resp)
             tmp = path.with_suffix(f".part{attempt}")
             tmp.write_bytes(data)
             tmp.replace(path)

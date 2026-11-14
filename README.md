@@ -61,7 +61,7 @@ Browser (vanilla JS, canvas, Plotly)          FastAPI backend (Python)
                                                disk cache of cutouts and results
 ```
 
-- Images: SPHEREx Level-2 spectral images (DR1 + QR3) via the IRSA TAP service (`spherex.artifact`/`spherex.plane`) and the IRSA cutout service.
+- Images: SPHEREx Level-2 spectral images (DR1 + QR3) via the IRSA TAP service (`spherex.artifact`/`spherex.plane`) and the IRSA cutout service. Each cutout carries a ~3.9 MB PSF table that the tool does not use, so the download stops before it (about 115 kB per cutout instead of 4 MB).
 - Cleaning: zodiacal light model (ZODI extension) subtracted; pixels with bad FLAGS bits masked (Explanatory Supplement Table 16); per-image background removed.
 - Alignment: every cutout reprojected onto a common north-up TAN grid (6.15″ pixels) with `reproject`.
 - Co-addition: one inverse-variance–weighted frame per (visit, detector); the browser normalises and combines detectors on the fly.
