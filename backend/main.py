@@ -79,9 +79,13 @@ def targets():
 
 @app.get("/api/resolve")
 def resolve(q: str = Query(..., min_length=1)):
-    r = cat.resolve(q)
+    try:
+        r = cat.resolve(q)
+    except cat.ResolverDown:
+        raise HTTPException(503, "The name services (SIMBAD, CDS Sesame) cannot be reached right now. "
+                                 "Please enter coordinates instead.")
     if r is None:
-        raise HTTPException(404, f"Could not resolve '{q}'. Try RA/Dec in degrees or hh:mm:ss dd:mm:ss.")
+        raise HTTPException(404, f"No object called '{q}' was found in SIMBAD or CDS Sesame.")
     return r
 
 

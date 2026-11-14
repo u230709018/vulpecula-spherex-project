@@ -87,20 +87,29 @@
         <button data-mode="stack" class="mode" title="Stack: median of all visits. In Solar System object mode this is shift-and-add: the object adds up while background stars blur out (S)">Stack</button>
       </div>
       <div class="group dets" id="dets" aria-label="Detectors"></div>
-      <div class="group">
+      <div class="group advanced">
         <label>Black <input id="lo" type="range" min="0" max="50" step="0.5" value="2"></label>
         <label>White <input id="hi" type="range" min="90" max="100" step="0.1" value="99.5"></label>
         <label>Asinh <input id="asinh" type="range" min="0" max="30" step="1" value="8"></label>
         <label class="chk"><input id="invert" type="checkbox" checked> Invert</label>
       </div>
-      <div class="group">
+      <div class="group advanced">
         <label class="chk"><input id="ovTarget" type="checkbox" checked> Target track</label>
         <label class="chk"><input id="ovGaia" type="checkbox"> Gaia DR3</label>
         <label class="chk"><input id="ovAst" type="checkbox"> Known asteroids</label>
         <label class="chk"><input id="ovBorder" type="checkbox" checked> Mark first epoch</label>
+        <label class="chk" title="Boxes mark places where this visit is much brighter than the median of the other visits: something moved in or brightened. Solid box = no Gaia star there."><input id="ovAuto" type="checkbox"> Auto-detect changes</label>
+      </div>
+      <p class="muted small" id="autoNote" hidden></p>
+      <div class="group share">
+        <button id="candAdd" title="Save the clicked position (or the target) to your candidate list">★ Save as candidate</button>
+        <button id="copyLink" title="Link to exactly this view">Copy link</button>
+        <button id="copyEmbed" title="HTML snippet that shows this viewer inside another web page">Copy embed code</button>
+        <input id="shareBox" type="text" readonly hidden aria-label="Text to copy">
       </div>
     </div>
     <div class="links" id="links"></div>
+    <a id="openFull" class="open-full" target="_blank" rel="noopener" href="./">Open in SPHEREx Time Machine ↗</a>
   </section>
 
   <section class="card context" id="contextCard" hidden>
@@ -133,6 +142,14 @@
       <div id="lcPlot" class="plot small-plot"></div>
       <p class="muted small">Median flux per visit and detector, normalised per detector. Variable stars change; moving objects stay flat.</p>
     </section>
+    <section class="card">
+      <div class="card-head">
+        <h3>Your candidates <span id="candCount" class="muted"></span></h3>
+        <button id="candCsv" class="ghost small" disabled>Download CSV</button>
+      </div>
+      <ul id="candList" class="small cands"></ul>
+      <p class="muted small">Kept in this browser only. The CSV has coordinates, visit date and a link back to each view, ready to share with a science team or check in WiseView.</p>
+    </section>
     <section class="card" id="warnCard" hidden>
       <h3>Data-quality notes</h3>
       <ul id="warnings" class="small"></ul>
@@ -143,6 +160,7 @@
         <li><b>Blink:</b> stars stay put; a dot that hops between epochs is moving.</li>
         <li><b>Difference:</b> static stars vanish; a mover leaves a <i>dipole</i> (dark/bright pair).</li>
         <li><b>D6−D4:</b> cold brown dwarfs are bright at 4.5 µm but dark in the 3.3 µm methane band.</li>
+        <li><b>Auto-detect changes:</b> pink boxes mark where one visit is much brighter than the others. They are hints, not discoveries: blink to confirm, then save the position as a candidate.</li>
         <li><b>No Gaia match?</b> A moving source invisible to Gaia is too cold for optical light – exactly how volunteers find brown dwarfs.</li>
         <li><b>Beware artifacts:</b> ghosts and cosmic rays appear in one frame only, or move with the detector instead of the sky.</li>
       </ul>

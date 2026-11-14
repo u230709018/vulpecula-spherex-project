@@ -21,6 +21,7 @@ const S = {
   result: null, key: null, z: new Map(), epochs: [], cur: 0, playing: true, timer: null,
   mode: "blink", dets: new Set(["D5", "D6"]), display: [], limits: null,
   gaia: null, ast: null, spec: null, specLabel: null, target: null, fov: 5, pending: null,
+  auto: null, embed: false,
 };
 
 // ---------------------------------------------------------------- helpers
@@ -39,6 +40,7 @@ function parseCoords(text) {
   }
   const sx = text.trim().match(/^(\d{1,2})[: h](\d{1,2})[: m](\d{1,2}(?:\.\d+)?)s?\s*,?\s*([-+]?\d{1,2})[: d°](\d{1,2})[: m′'](\d{1,2}(?:\.\d+)?)/);
   if (sx) {
+    if ([sx[2], sx[3], sx[5], sx[6]].some((v) => +v >= 60)) return { ra: NaN, dec: NaN };   // minutes/seconds must be < 60
     const ra = 15 * (+sx[1] + sx[2] / 60 + sx[3] / 3600);
     const sgn = sx[4].startsWith("-") ? -1 : 1;
     const dec = sgn * (Math.abs(+sx[4]) + sx[5] / 60 + sx[6] / 3600);
@@ -149,8 +151,56 @@ function rebuildDisplay() {
       });
     } else S.display = base.map((a) => [a]);
   }
+  S.auto = $("ovAuto").checked ? detectChanges() : null;
   computeLimits();
   render();
+}
+
+// ---------------------------------------------------------------- automatic change detection
+// Thresholds tuned on the five demo fields: at 5 sigma, quiet fields showed up to 3 noise hits per visit.
+const DETECT_SIGMA = 7;        // a flagged pixel must exceed the noise of the difference image by this much
+const DETECT_FRACTION = 0.35;  // ...and be a large fraction of the source itself (rejects small residuals of steady stars)
+/* Flag places where one visit is much brighter than the median of the other visits: a source that
+   moved in, or a star that brightened. Returns, per visit, up to 5 hits {x, y, ra, dec, snr}.
+   These are hints for the eye, not discoveries: confirm by blinking and checking the flags. */
+function detectChanges() {
+  if (!S.result || isMoving()) return null;
+  const [ny, nx] = S.result.grid.shape;
+  const base = S.epochs.map((e) => composite(e.epoch, [...S.dets]));
+  const valid = base.map((a, k) => (a ? k : -1)).filter((k) => k >= 0);
+  const out = S.epochs.map(() => []);
+  if (valid.length < 3) return out;
+  const arrs = valid.map((k) => base[k]);
+  valid.forEach((k, j) => {
+    const a = arrs[j], m = medianOthers(arrs, j), d = new Float32Array(a.length);
+    for (let i = 0; i < a.length; i++) d[i] = a[i] - m[i];
+    const abs = Array.from(d).filter(Number.isFinite).map(Math.abs).sort((p, q) => p - q);
+    const sigma = 1.4826 * percentile(abs, 50) || 1;
+    const hits = [];
+    for (let y = 2; y < ny - 2; y++) for (let x = 2; x < nx - 2; x++) {
+      const i = y * nx + x, v = d[i];
+      if (!(v > DETECT_SIGMA * sigma) || !(v > DETECT_FRACTION * a[i])) continue;
+      let peak = true, support = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const w = d[i + dy * nx + dx];
+        if (w > v) peak = false;
+        if (w > 0.4 * v) support = true;   // starlight spills into a neighbouring pixel; a cosmic-ray hit does not
+      }
+      if (peak && support) { const [ra, dec] = pix2world(x, y); hits.push({ x, y, ra, dec, snr: v / sigma }); }
+    }
+    // strongest first; drop hits within 5 px of a stronger one (the halo of a bright star gives several)
+    const kept = [];
+    for (const h of hits.sort((p, q) => q.snr - p.snr))
+      if (kept.length < 5 && !kept.some((g) => Math.hypot(g.x - h.x, g.y - h.y) < 5)) kept.push(h);
+    out[k] = kept;
+  });
+  return out;
+}
+function gaiaNear(ra, dec) {   // is a Gaia star within 4″ at the current visit? null = Gaia not loaded
+  if (!S.gaia || !S.gaia.provider) return null;
+  const cosd = Math.cos(dec * D2R);
+  return S.gaia.sources.some((s) => { const p = s.positions[S.cur]; return p && Math.hypot((p[0] - ra) * cosd, p[1] - dec) * 3600 < 4; });
 }
 function computeLimits() {
   const lo = +$("lo").value, hi = +$("hi").value, sym = S.mode === "diff" || S.mode === "cdiff";
@@ -219,6 +269,13 @@ function render() {
       : `${e.date_start}${e.date_end !== e.date_start ? " → " + e.date_end.slice(5) : ""} · ${e.n_images} images · ${S.mode === "color" ? "colour" : S.mode === "cdiff" ? "D5+D6 − D4" : [...S.dets].join("+")}${S.mode === "diff" ? " − median" : ""}`;
   }
   document.querySelectorAll(".timeline button").forEach((b, i) => b.classList.toggle("cur", i === S.cur));
+  const hits = (S.auto && S.auto[S.cur]) || [];
+  $("autoNote").hidden = !S.auto;
+  if (S.auto) {
+    const noGaia = hits.filter((h) => gaiaNear(h.ra, h.dec) === false).length;
+    $("autoNote").textContent = S.epochs.length < 3 ? "Auto-detect needs at least 3 visits."
+      : `Auto-detect: ${hits.length} change${hits.length === 1 ? "" : "s"} flagged in this visit${hits.length ? `, ${noGaia} with no Gaia star` : ""}. Hints only – confirm by blinking.`;
+  }
   drawOverlay();
 }
 function view() {
@@ -282,6 +339,20 @@ function drawOverlay() {
     const [x, y] = pts[S.cur], r = Math.max(9, px * 2.2);
     ctx.strokeStyle = "#4fb3ff"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.stroke();
+  }
+  if (S.auto) {   // automatic hints: pink boxes, solid when no Gaia star sits there
+    ctx.font = "11px system-ui";
+    for (const h of S.auto[S.cur] || []) {
+      const [x, y] = toCanvas(h.x, h.y), r = Math.max(10, px * 1.8), noGaia = gaiaNear(h.ra, h.dec) === false;
+      ctx.strokeStyle = ctx.fillStyle = "#ff6bd6"; ctx.lineWidth = noGaia ? 2.5 : 1.5;
+      ctx.setLineDash(noGaia ? [] : [4, 3]); ctx.strokeRect(x - r, y - r, 2 * r, 2 * r); ctx.setLineDash([]);
+      ctx.fillText(`${h.snr.toFixed(0)}σ${noGaia ? " · no Gaia" : ""}`, x + r + 3, y + 4);
+    }
+  }
+  ctx.strokeStyle = "#ffd25a"; ctx.lineWidth = 1.5;   // saved candidates: small yellow squares
+  for (const c of loadCands()) {
+    const [x, y] = toCanvas(...world2pix(c.ra, c.dec));
+    if (x > 0 && y > 0 && x < cv.width && y < cv.height) ctx.strokeRect(x - 7, y - 7, 14, 14);
   }
   if (S.specLabel && S.specLabel.ra != null) {
     const [x, y] = toCanvas(...world2pix(S.specLabel.ra, S.specLabel.dec));
@@ -424,6 +495,8 @@ function buildBadges() {
     b.push(`<span class="badge" title="To stay fast, up to 8 images per visit and detector are used">${r.stats.n_total} images in archive${r.stats.n_total > 1000 ? " (deep field)" : ""}</span>`);
   const pm = Math.hypot(S.target.pmra || 0, S.target.pmdec || 0);
   if (pm > 500) b.push(`<span class="badge warn">High proper motion: ${(pm / 1000).toFixed(1)}″/yr → ${(pm / 1000 * span / 6.15).toFixed(1)} px over the data</span>`);
+  const latest = S.epochs.map((e) => e.date_end).sort().at(-1);
+  b.push(`<span class="badge" title="Date of the newest SPHEREx image used for this field. Fields are queried live from the archive on first load and then kept; see the README for refreshing after a data release.">Latest image: ${latest}</span>`);
   b.push(`<span class="badge" id="gaiaBadge">Gaia: checking…</span>`);
   b.push(`<span class="badge" id="pmBadge"></span>`);
   $("badges").innerHTML = b.join("");
@@ -494,7 +567,7 @@ async function fetchGaia() {
     el.className = "badge warn";
     el.textContent = "No Gaia counterpart – invisible in optical light";
   }
-  drawOverlay();
+  render();   // also refreshes the auto-detect note, which counts hits without a Gaia star
 }
 async function fetchAsteroids() {
   const r = S.result;
@@ -504,6 +577,56 @@ async function fetchAsteroids() {
   } catch { S.ast = null; }
   $("ovAst").disabled = false;
   drawOverlay();
+}
+
+// ---------------------------------------------------------------- candidates (kept in this browser)
+const CAND_KEY = "sxtm.candidates";
+function loadCands() { try { return JSON.parse(localStorage.getItem(CAND_KEY)) || []; } catch { return []; } }
+function saveCands(list) {
+  try { localStorage.setItem(CAND_KEY, JSON.stringify(list)); } catch { /* storage blocked: list lasts until reload */ }
+  renderCands(); drawOverlay();
+}
+/* Save the clicked position (or, with nothing clicked, the target) of the visit on screen. */
+function addCandidate() {
+  if (!S.result || isMoving()) return;
+  const e = S.epochs[S.cur], clicked = S.specLabel && S.specLabel.ra != null;
+  const ra = clicked ? S.specLabel.ra : e.target_ra, dec = clicked ? S.specLabel.dec : e.target_dec;
+  const g = gaiaNear(ra, dec);
+  const h = new URLSearchParams({ ra: ra.toFixed(6), dec: dec.toFixed(6), fov: S.fov, mode: S.mode, dets: [...S.dets].join(","), name: "Candidate" });
+  saveCands([...loadCands(), { ra, dec, field: S.target.name || "", date: e.date_start, mode: S.mode, dets: [...S.dets].join("+"),
+    gaia: g == null ? "unknown" : g ? "yes" : "no", link: `${location.origin}${location.pathname}#${h}`, saved: new Date().toISOString() }]);
+}
+function renderCands() {
+  const list = loadCands();
+  $("candCount").textContent = list.length ? `(${list.length})` : "";
+  $("candCsv").disabled = !list.length;
+  $("candList").innerHTML = list.length
+    ? list.map((c, i) => `<li><a href="${esc(c.link)}" title="Open a view centred on this position">${sexa(c.ra, true)} ${sexa(c.dec)}</a>
+        <button class="ghost small" data-i="${i}" title="Remove">✕</button><br>
+        <span class="muted">${esc(c.field || "field")} · ${esc(c.date)} · ${esc(c.dets)} · Gaia star: ${esc(c.gaia)}</span></li>`).join("")
+    : `<li class="muted">Nothing saved yet. Click a source on the image, then “Save as candidate”.</li>`;
+  $("candList").querySelectorAll("button").forEach((b) => (b.onclick = () => { const l = loadCands(); l.splice(+b.dataset.i, 1); saveCands(l); }));
+}
+function downloadCands() {
+  const cols = ["ra_deg", "dec_deg", "ra_hms", "dec_dms", "field", "visit_date", "mode", "detectors", "gaia_star_within_4arcsec", "link", "saved_utc"];
+  const rows = loadCands().map((c) => [c.ra.toFixed(6), c.dec.toFixed(6), sexa(c.ra, true), sexa(c.dec).replace("−", "-"),
+    c.field, c.date, c.mode, c.dets, c.gaia, c.link, c.saved]);
+  const csv = [cols, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "spherex-candidates.csv"; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ---------------------------------------------------------------- sharing and embedding
+function viewUrl(embed) {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (embed) h.set("embed", "1"); else h.delete("embed");
+  return `${location.origin}${location.pathname}#${h}`;
+}
+function share(text, btn) {   // show the text ready to copy, and copy it when the browser allows
+  const box = $("shareBox"), label = btn.textContent;
+  box.hidden = false; box.value = text; box.select();
+  navigator.clipboard?.writeText(text).then(() => { btn.textContent = "Copied ✓"; setTimeout(() => (btn.textContent = label), 1500); }).catch(() => {});
 }
 
 // ---------------------------------------------------------------- measured proper motion
@@ -718,22 +841,44 @@ function setHash() {
   else { h.set("ra", t.ra.toFixed(6)); h.set("dec", t.dec.toFixed(6)); if (t.pmra) h.set("pmra", t.pmra); if (t.pmdec) h.set("pmdec", t.pmdec); if (t.ref_epoch && t.ref_epoch !== 2000) h.set("epoch", t.ref_epoch); if (t.name) h.set("name", t.name); }
   h.set("fov", S.fov); h.set("mode", S.mode); h.set("dets", [...S.dets].join(","));
   h.set("speed", $("speed").value); if (!$("invert").checked) h.set("invert", "0"); if (+$("zoom").value !== 1) h.set("zoom", $("zoom").value);
+  if (S.embed) h.set("embed", "1");
   history.replaceState(null, "", "#" + h.toString());
+  $("openFull").href = viewUrl(false);
 }
 function setMode(m) {
   S.mode = m; document.querySelectorAll(".mode").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
   setHash(); rebuildDisplay();
 }
+const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+/* A rejected search: say what is wrong and show the accepted formats as clickable examples. */
+function inputHelp(message) {
+  S.pending = null; showProgress(false);
+  const ex = [["269.452 4.693", "decimal degrees"], ["08:55:10.8 -07:14:42", "hours and degrees"],
+              ["Barnard's Star", "a name known to SIMBAD"], ["M 31", "catalogue name"]];
+  $("empty").hidden = false;
+  $("empty").innerHTML = `<p><b>${esc(message)}</b></p>
+    <p class="small">Accepted input (click an example to try it):</p>
+    <p class="examples">${ex.map(([q, what]) => `<button type="button" data-q="${esc(q)}">${esc(q)}<span class="k">${what}</span></button>`).join("")}</p>
+    <p class="small">RA runs from 0° to 360° (or 0h to 24h), Dec from −90° to +90°.<br>
+    Names follow SIMBAD spelling, e.g. <i>WISE J085510.83-071442.5</i>. Asteroids and comets: switch the menu to “Solar System object”.</p>`;
+  $("empty").querySelectorAll("button[data-q]").forEach((b) => (b.onclick = () => { $("q").value = b.dataset.q; submitQuery(b.dataset.q); }));
+}
 async function submitQuery(text) {
   const fov = +$("fov").value;
   if ($("qmode").value === "sso") return loadObject(text, fov);
   const c = parseCoords(text);
-  if (c) return loadTarget({ name: null, ra: c.ra, dec: c.dec, pmra: 0, pmdec: 0, ref_epoch: 2000 }, fov);
+  if (c) {
+    if (Number.isNaN(c.ra)) return inputHelp("Minutes and seconds in a position must be below 60.");
+    if (!(c.ra >= 0 && c.ra < 360 && Math.abs(c.dec) <= 90))
+      return inputHelp(`These coordinates are outside the sky: RA ${fmt(c.ra, 3)}°, Dec ${fmt(c.dec, 3)}°.`);
+    return loadTarget({ name: null, ra: c.ra, dec: c.dec, pmra: 0, pmdec: 0, ref_epoch: 2000 }, fov);
+  }
+  if (!/[a-z]/i.test(text)) return inputHelp(`“${text}” is not a complete position: give both RA and Dec.`);
   try {
     const r = await api(`/api/resolve?q=${encodeURIComponent(text)}`);
     loadTarget(r, fov);
   } catch (err) {
-    $("empty").hidden = false; $("empty").innerHTML = `<p>${err.message}</p>`;
+    inputHelp(err.message);
   }
 }
 function setFovOption(v) {
@@ -748,6 +893,8 @@ function setFovOption(v) {
 }
 async function initFromHash(targets) {
   const h = new URLSearchParams(location.hash.slice(1));
+  S.embed = h.get("embed") === "1";            // embed=1: viewer only, for <iframe> use on other sites
+  document.body.classList.toggle("embed", S.embed);
   if (h.get("fov")) setFovOption(+h.get("fov"));
   if (h.get("mode")) S.mode = h.get("mode");
   if (h.get("dets")) S.dets = new Set(h.get("dets").split(",").filter((d) => DETS.includes(d)));
@@ -791,6 +938,13 @@ async function main() {
   $("zoom").oninput = () => { render(); setHash(); };
   $("speed").oninput = () => setHash();
   ["ovTarget", "ovGaia", "ovBorder"].forEach((id) => ($(id).onchange = drawOverlay));
+  $("ovAuto").onchange = () => { S.auto = $("ovAuto").checked ? detectChanges() : null; render(); };
+  $("candAdd").onclick = addCandidate;
+  $("candCsv").onclick = downloadCands;
+  $("copyLink").onclick = () => share(viewUrl(false), $("copyLink"));
+  $("copyEmbed").onclick = () => share(`<iframe src="${viewUrl(true)}" width="600" height="760" style="border:0" loading="lazy" title="SPHEREx Time Machine"></iframe>`, $("copyEmbed"));
+  renderCands();
+  window.addEventListener("hashchange", () => initFromHash(targets));   // opening a saved candidate link
   $("survey").onchange = async () => {
     const al = await ensureAladin();
     if (!al) return;

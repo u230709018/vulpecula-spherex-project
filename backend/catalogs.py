@@ -52,16 +52,27 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
 
-def resolve(query: str) -> dict | None:
-    q = _norm(query)
-    for t in TARGETS:
-        if q == _norm(t["name"]) or q in (_norm(a) for a in t["aliases"]) or q == t["id"]:
-            return {**{k: t[k] for k in ("name", "ra", "dec", "pmra", "pmdec", "ref_epoch", "kind", "note")},
-                    "source": "built-in"}
-    try:
-        xml = _get("https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?" + urllib.parse.quote(query), timeout=20)
-    except Exception:
+class ResolverDown(Exception):
+    """No name service could be reached (as opposed to: the name is unknown)."""
+
+
+def _simbad_harvard(query: str) -> dict | None:
+    """SIMBAD mirror at Harvard: still answers when the CDS servers in Strasbourg are down."""
+    script = ('output console=off script=off\n'
+              'format object "%COO(d;A D;ICRS;J2000;2000)|%PM(A D)"\n'
+              f'query id {" ".join(query.split())}')   # one line only: the name goes into a script
+    txt = _get("https://simbad.harvard.edu/simbad/sim-script?script=" + urllib.parse.quote(script), timeout=15).strip()
+    m = re.fullmatch(r"([\d.]+) +([-+][\d.]+)\|(\S+) +(\S+)", txt)
+    if not m:
         return None
+    has_pm = m.group(3) != "~"
+    return {"name": query, "ra": float(m.group(1)), "dec": float(m.group(2)),
+            "pmra": float(m.group(3)) if has_pm else 0.0, "pmdec": float(m.group(4)) if has_pm else 0.0,
+            "ref_epoch": 2000.0, "kind": "", "note": "", "source": "SIMBAD (Harvard mirror)"}
+
+
+def _sesame(query: str) -> dict | None:
+    xml = _get("https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?" + urllib.parse.quote(query), timeout=12)
     ra = re.search(r"<jradeg>([^<]+)</jradeg>", xml)
     dec = re.search(r"<jdedeg>([^<]+)</jdedeg>", xml)
     if not (ra and dec):
@@ -72,6 +83,29 @@ def resolve(query: str) -> dict | None:
             "ra": float(ra.group(1)), "dec": float(dec.group(1)),
             "pmra": float(pm.group(1)) if pm else 0.0, "pmdec": float(pm.group(2)) if pm else 0.0,
             "ref_epoch": 2000.0, "kind": "", "note": "", "source": "CDS Sesame"}
+
+
+def resolve(query: str) -> dict | None:
+    """Built-in targets, then SIMBAD, then CDS Sesame (which also knows NED and VizieR names).
+    Returns None for an unknown name; raises ResolverDown when no service answered."""
+    q = _norm(query)
+    for t in TARGETS:
+        if q == _norm(t["name"]) or q in (_norm(a) for a in t["aliases"]) or q == t["id"]:
+            return {**{k: t[k] for k in ("name", "ra", "dec", "pmra", "pmdec", "ref_epoch", "kind", "note")},
+                    "source": "built-in"}
+    services = (_simbad_harvard, _sesame)
+    failed = 0
+    for service in services:
+        try:
+            r = service(query)
+        except Exception:
+            failed += 1
+            continue
+        if r:
+            return r
+    if failed == len(services):
+        raise ResolverDown()
+    return None
 
 
 # --------------------------------------------------------------------------- #

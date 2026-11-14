@@ -19,7 +19,11 @@ A public web tool for the NASA Space Apps Challenge 2026 *"Planet X and SPHEREx"
 - **Overlays**: Gaia DR3 (propagated to each visit from J2016.0, fast movers drawn with motion arrows), known asteroids and comets (JPL Small-Body Identification), target track.
 - **"No Gaia counterpart" badge**: a moving source invisible to Gaia is too cold for optical light – the classic brown-dwarf signature used by citizen scientists.
 - **Data-quality notes** from SPHEREx pixel flags (ghosts, streaks, cosmic rays, persistence) at the measured position; frames with heavy transient contamination are skipped.
-- **Shareable/embeddable URLs**: every setting lives in the URL, e.g. `/#target=wise0855&mode=diff&dets=D5,D6` or `/#ra=269.452&dec=4.693&pmra=-802&pmdec=10362&fov=8`.
+- **Auto-detect changes** (optional overlay): boxes mark places where one visit is much brighter than the median of the other visits, i.e. something moved in or brightened; a solid box means no Gaia star sits there. These are hints for the eye, tuned on the demo fields, not a detection pipeline: around saturated stars they also flag halo residuals.
+- **Candidate list**: click a source, press "Save as candidate", and download your list as CSV (coordinates, visit date, Gaia match, link back to the view) to share with a science team. The list stays in the browser; nothing is uploaded.
+- **Shareable URLs**: every setting lives in the URL, e.g. `/#target=wise0855&mode=diff&dets=D5,D6` or `/#ra=269.452&dec=4.693&pmra=-802&pmdec=10362&fov=8`.
+- **Embeddable**: add `&embed=1` for a viewer-only page, or use "Copy embed code" for a ready `<iframe>` snippet: `<iframe src="https://spherex-time-machine.onrender.com/#target=wise0855&mode=diff&dets=D5,D6&embed=1" width="600" height="760"></iframe>`.
+- **Input help**: positions outside the sky, incomplete coordinates and unknown names get a clear message with clickable examples of the accepted formats. Names are resolved by SIMBAD (Harvard mirror) and CDS Sesame.
 - **Links out**: WiseView (13 years of WISE), SIMBAD, CADC SSOIS (other telescopes at this position), Legacy Survey, IRSA SPHEREx Data Explorer.
 - Keyboard: Space play/pause · ← → step · B/D/C modes · I invert · + − zoom.
 
@@ -38,6 +42,12 @@ Optional – pre-compute the demo targets so they load instantly:
 .venv/bin/python scripts/warm_cache.py 5
 ```
 
+## Keeping up with new SPHEREx data
+
+- A position that has not been loaded before is queried live from the IRSA archive (`spherex.artifact`/`spherex.plane`, no release name hard-coded), so images from new Quick Releases and Data Releases are picked up automatically.
+- A finished field is stored in `data/results/` and served from there afterwards. The "Latest image" badge shows the date of the newest image in the stored field.
+- To refresh stored fields after a release, delete `data/results/*.json` and run `scripts/warm_cache.py 5` again. If the processing itself changes, raise `PIPELINE_VERSION` in `backend/pipeline.py` instead; old results are then ignored.
+
 ## How it works
 
 ```
@@ -46,7 +56,7 @@ Browser (vanilla JS, canvas, Plotly)          FastAPI backend (Python)
   stretch, invert, zoom (instant)              /api/spectrum aperture photometry on every image
   WCS (TAN) for overlays & clicks              /api/gaia     ESA Gaia archive (MAST fallback)
   URL state, keyboard                          /api/asteroids JPL sb_ident
-                                               /api/resolve  built-in targets, CDS Sesame
+                                               /api/resolve  built-in targets, SIMBAD, CDS Sesame
                                                disk cache of cutouts and results
 ```
 

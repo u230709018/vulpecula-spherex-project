@@ -66,5 +66,5 @@ Tarayıcıda **http://localhost:8000** adresini açın. Demo hedefleri (`data/re
 - [x] SPHEREx'ten ölçülen öz hareket ve katalog karşılaştırması (WISE 0855: 7.7±0.5 vs 8.1″/yıl)
 - [x] Yayına alındı: **https://spherex-time-machine.onrender.com** (Render, ücretsiz). `main`'e her push otomatik deploy eder; 15 dk kullanılmazsa uyur, ilk açılış ~1 dk
 - [ ] PSF fotometrisi (WISE 0855'in kısa dalga boylarındaki kirlenme)
-- [ ] Otomatik hareketli aday işaretleme (fark karesinde 3σ + morfoloji)
-- [ ] Mobil görünüm kontrolü, demo videosu (≤30 sn), 7 slayt, proje sayfası metni (İngilizce)
+- [x] Otomatik değişim ipucu ("Auto-detect changes": fark karesinde 7σ + komşu piksel desteği, Gaia eşleşmesi), aday listesi + CSV, gömülü mod (`embed=1`), hatalı giriş yardımı
+- [ ] Mobil görünüm: rozet taşması düzeltildi, gerçek telefonda son kontrol; demo videosu (≤30 sn), 7 slayt, proje sayfası metni (İngilizce)
