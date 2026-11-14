@@ -377,6 +377,13 @@ function showProgress(on, msg, frac) {
   if (msg) $("progressMsg").textContent = msg;
   if (frac != null) $("progressBar").style.width = `${Math.round(frac * 100)}%`;
 }
+/* Optional date range from the search bar, as request fields (empty boxes are left out). */
+function dateRange() {
+  const d = {};
+  if ($("from").value) d.start = $("from").value;
+  if ($("to").value) d.end = $("to").value;
+  return d;
+}
 async function loadTarget(t, fov) {
   S.target = t; S.fov = fov; S.gaia = null; S.ast = null; S.spec = null; S.specLabel = null;
   $("ovAst").checked = false; $("candidates").hidden = true;
@@ -385,7 +392,7 @@ async function loadTarget(t, fov) {
   $("targetInfo").textContent = `${t.kind ? t.kind + " · " : ""}RA ${sexa(t.ra, true)} Dec ${sexa(t.dec)} (epoch ${t.ref_epoch || 2000})${pm > 50 ? ` · moves ${(pm / 1000).toFixed(2)}″/yr` : ""}`;
   setHash();
   const body = { ra: t.ra, dec: t.dec, pmra: t.pmra || 0, pmdec: t.pmdec || 0, ref_epoch: t.ref_epoch || 2000,
-                 fov_arcmin: fov, max_per_cell: 8, budget: 260, name: t.name || null };
+                 fov_arcmin: fov, max_per_cell: 8, budget: 260, name: t.name || null, ...dateRange() };
   // Ask for a quick preview first; the server answers with the full result if it already has it.
   runJob("/api/frames", { ...body, preview: true }, "Could not load this field.", body);
 }
@@ -398,6 +405,7 @@ async function loadObject(name, fov) {
   setHash();
   const body = { name, fov_arcmin: S.fov, max_frames: 40 };
   if (name === "3I") Object.assign(body, { start: "2025-08-01", end: "2025-12-31" });  // demo: SPHEREx's two 3I/ATLAS campaigns
+  Object.assign(body, dateRange());
   runJob("/api/moving", body, "Could not track this object.");
 }
 /* Start a job (or get its cached result) and poll until it is done. Returns the result,
@@ -859,6 +867,8 @@ function setHash() {
   if (t.sso) h.set("object", t.name);
   else if (t.id) h.set("target", t.id);
   else { h.set("ra", t.ra.toFixed(6)); h.set("dec", t.dec.toFixed(6)); if (t.pmra) h.set("pmra", t.pmra); if (t.pmdec) h.set("pmdec", t.pmdec); if (t.ref_epoch && t.ref_epoch !== 2000) h.set("epoch", t.ref_epoch); if (t.name) h.set("name", t.name); }
+  if ($("from").value) h.set("from", $("from").value);
+  if ($("to").value) h.set("to", $("to").value);
   h.set("fov", S.fov); h.set("mode", S.mode); h.set("dets", [...S.dets].join(","));
   h.set("speed", $("speed").value); if (!$("invert").checked) h.set("invert", "0"); if (+$("zoom").value !== 1) h.set("zoom", $("zoom").value);
   if (S.embed) h.set("embed", "1");
@@ -916,6 +926,7 @@ async function initFromHash(targets) {
   S.embed = h.get("embed") === "1";            // embed=1: viewer only, for <iframe> use on other sites
   document.body.classList.toggle("embed", S.embed);
   if (h.get("fov")) setFovOption(+h.get("fov"));
+  for (const k of ["from", "to"]) if (/^\d{4}-\d{2}-\d{2}$/.test(h.get(k) || "")) $(k).value = h.get(k);
   if (h.get("mode")) S.mode = h.get("mode");
   if (h.get("dets")) S.dets = new Set(h.get("dets").split(",").filter((d) => DETS.includes(d)));
   if (h.get("speed")) $("speed").value = h.get("speed");

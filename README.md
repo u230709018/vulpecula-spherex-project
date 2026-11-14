@@ -12,6 +12,7 @@ A public web tool for the NASA Space Apps Challenge 2026 *"Planet X and SPHEREx"
 
 - **Blink** SPHEREx images of any position, one frame per visit (DR1 + QR3 + deep fields, queried live from NASA/IPAC IRSA, so newly released data appears automatically).
 - **Quick preview first**: a new field first loads with up to 3 images per visit and detector (about a third of the downloads), so there is something to look at early; the full-quality version (up to 8) loads in the background and replaces it without changing the visit on screen.
+- **Date range** (optional): fill in From / To to use only the images taken between two dates, e.g. to look at a single visit; images outside the range are not downloaded, so a narrower range also loads faster. SPHEREx images start in 2025; a range with no images gets a message that names the dates available at that position.
 - **Six detector arrays** selectable individually or combined; frames are co-added per visit and detector for signal-to-noise.
 - **Difference mode**: each visit minus the median of the other visits. Static stars cancel; movers leave a dipole.
 - **False-colour mode** (blue = D1+D2, green = D3+D4, red = D5+D6) and **D6−D4 mode**: cold brown dwarfs are bright at 4.5 µm but dark in the 3.3 µm methane band.
@@ -22,7 +23,7 @@ A public web tool for the NASA Space Apps Challenge 2026 *"Planet X and SPHEREx"
 - **Data-quality notes** from SPHEREx pixel flags (ghosts, streaks, cosmic rays, persistence) at the measured position; frames with heavy transient contamination are skipped.
 - **Auto-detect changes** (optional overlay): boxes mark places where one visit is much brighter than the median of the other visits, i.e. something moved in or brightened; a solid box means no Gaia star sits there. These are hints for the eye, tuned on the demo fields, not a detection pipeline: around saturated stars they also flag halo residuals.
 - **Candidate list**: click a source, press "Save as candidate", and download your list as CSV (coordinates, visit date, Gaia match, link back to the view) to share with a science team. The list stays in the browser; nothing is uploaded.
-- **Shareable URLs**: every setting lives in the URL, e.g. `/#target=wise0855&mode=diff&dets=D5,D6` or `/#ra=269.452&dec=4.693&pmra=-802&pmdec=10362&fov=8`.
+- **Shareable URLs**: every setting lives in the URL, e.g. `/#target=wise0855&mode=diff&dets=D5,D6` or `/#ra=269.452&dec=4.693&pmra=-802&pmdec=10362&fov=8`; a date range is `&from=2026-01-01&to=2026-06-30`.
 - **Embeddable**: add `&embed=1` for a viewer-only page, or use "Copy embed code" for a ready `<iframe>` snippet: `<iframe src="https://spherex-time-machine.onrender.com/#target=wise0855&mode=diff&dets=D5,D6&embed=1" width="600" height="760"></iframe>`.
 - **Input help**: positions outside the sky, incomplete coordinates and unknown names get a clear message with clickable examples of the accepted formats. Names are resolved by SIMBAD (Harvard mirror) and CDS Sesame.
 - **Links out**: WiseView (13 years of WISE), SIMBAD, CADC SSOIS (other telescopes at this position), Legacy Survey, IRSA SPHEREx Data Explorer.

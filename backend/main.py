@@ -43,6 +43,8 @@ class FramesRequest(BaseModel):
     max_per_cell: int = Field(8, ge=2, le=40)
     budget: int = Field(260, ge=20, le=1200)
     name: str | None = None
+    start: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")   # only images from this date on
+    end: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")     # ... and up to this date (inclusive)
     preview: bool = False             # quick first look with fewer images; see pipeline.PREVIEW_PER_CELL
 
 

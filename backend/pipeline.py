@@ -32,9 +32,10 @@ def job_key(p: dict) -> str:
 
 
 def frames_key(p: dict) -> str:
-    """Cache key of a sky-position job. `preview` only enters the key when set, so the keys of
-    full results (including the pre-computed demo targets) are the same as before it existed."""
-    return job_key({k: v for k, v in p.items() if k != "name" and (k != "preview" or v)})
+    """Cache key of a sky-position job. `preview`, `start` and `end` only enter the key when set,
+    so the keys of full results (including the pre-computed demo targets) are the same as before
+    these options existed."""
+    return job_key({k: v for k, v in p.items() if k != "name" and (k not in ("preview", "start", "end") or v)})
 
 
 def cached_result(key: str) -> dict | None:
@@ -103,7 +104,7 @@ def spectrum_and_lightcurve(cutouts, positions_by_epoch=None, ra=None, dec=None)
 
 
 def run_frames_job(p: dict, progress) -> dict:
-    """p: ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name, preview."""
+    """p: ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name, preview, start, end."""
     t0 = time.time()
     key = frames_key(p)
     size_deg = p["fov_arcmin"] / 60.0
@@ -115,6 +116,16 @@ def run_frames_job(p: dict, progress) -> dict:
     records = sx.find_images(ra_mid, dec_mid)
     if not records:
         raise RuntimeError("No SPHEREx images cover this position yet.")
+    if p.get("start") or p.get("end"):
+        # Optional date range (YYYY-MM-DD, end date included). Applied to the archive listing,
+        # so images outside the range are never downloaded.
+        lo = Time(p["start"]).mjd if p.get("start") else -np.inf
+        hi = Time(p["end"]).mjd + 1 if p.get("end") else np.inf
+        first, last = (Time(m, format="mjd").iso[:10] for m in (records[0].mjd, records[-1].mjd))
+        records = [r for r in records if lo <= r.mjd < hi]
+        if not records:
+            raise RuntimeError(f"No SPHEREx images of this position in the chosen dates. "
+                               f"The images here run from {first} to {last}.")
     epochs = sx.group_epochs(records)
     n_total = len(records)
     chosen = sx.budget_select(records, p.get("max_per_cell", 8), p.get("budget", 260))

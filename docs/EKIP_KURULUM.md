@@ -37,7 +37,7 @@ Tarayıcıda **http://localhost:8000** adresini açın. Demo hedefleri (`data/re
 |---|---|
 | `GET /api/targets` | Demo hedef listesi |
 | `GET /api/resolve?q=` | İsim → konum + öz hareket |
-| `POST /api/frames` | `{ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name}` → önbellekteyse `{status:"done", result_key}`, değilse `{status:"running", job_id}` |
+| `POST /api/frames` | `{ra, dec, pmra, pmdec, ref_epoch, fov_arcmin, max_per_cell, budget, name, preview, start, end}` (`start`/`end`: isteğe bağlı tarih aralığı, YYYY-AA-GG) → önbellekteyse `{status:"done", result_key}`, değilse `{status:"running", job_id}` |
 | `GET /api/jobs/{id}` | İlerleme: `stage`, `done`, `total`, `message`, `status` |
 | `GET /api/result/{key}` | `grid` (WCS), `epochs`, `frames` (her epoch × dedektör için base64 float32), `points` (spektrum), `lightcurve`, `stats` |
 | `GET /api/spectrum/{key}?ra&dec` | Alandaki herhangi bir noktanın spektrumu ve ışık eğrisi |

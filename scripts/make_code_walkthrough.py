@@ -205,6 +205,8 @@ UL("Her kesitte fotometri yapılır. Hedef hareketliyse her ziyaret için o tari
 PY(PL, "run_frames_job")
 P("Tüm adımları sırayla çağıran ana fonksiyon. Dikkat edilecek noktalar:")
 UL("Alan, hedefin 2025.9'daki konumuna ortalanır; hızlı cisimler katalogdaki eski konumlarında aranmaz.",
+   "İsteğe bağlı tarih aralığı (<code>start</code>, <code>end</code>) arşivden gelen listeye, indirmeden önce uygulanır; aralık dışındaki görüntüler hiç indirilmez. "
+   "Aralıkta görüntü yoksa hata mesajı o konumdaki gerçek tarih aralığını söyler. SPHEREx verisi 2025'te başlar.",
    "İndirilemeyen ve geçici olay sayısı çok yüksek kareler sayılarak ayrılır; bu sayılar arayüzdeki veri kalitesi notlarında görünür.",
    "Sonuç sözlüğü: ızgara bilgisi (<code>grid</code>), ziyaretler ve her birinde hedefin konumu (<code>epochs</code>), kareler (<code>frames</code>, base64 kodlu float32), kullanılan görüntüler, istatistikler, tayf noktaları ve ışık eğrisi.")
 

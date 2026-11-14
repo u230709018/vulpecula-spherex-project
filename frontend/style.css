@@ -44,7 +44,7 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
 #qmode { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px; }
 .demos button.sso { border-color: #6b5bd6; }
 .fov { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-.fov select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px; }
+.fov select, .fov input { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px; }
 .demos { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
 .demos button { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; }
 .demos button .k { color: var(--muted); margin-left: 4px; }
