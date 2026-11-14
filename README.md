@@ -43,7 +43,9 @@ A view can be shared as a link: `http://localhost:8000/#ra=269.4464&dec=4.7686&f
 
 ## Known limits
 
-- Coordinates are decimal degrees only; there is no search by object name.
+- Coordinates are decimal degrees only. Object names are looked up in SIMBAD (Harvard
+  mirror) and moved from epoch 2000 to today with the catalogue proper motion; SIMBAD
+  needs its own spelling of a name (e.g. `WISE J085510.83-071442.5`, not `WISE 0855`).
 - Within one detector the wavelength of a source changes from exposure to exposure,
   so brightness in single exposures is not directly comparable.
 - Saturated pixels (cores of very bright stars) are missing in the data and show as black.

@@ -27,6 +27,8 @@ CACHE = HERE / "cache"
 
 TAP = "https://irsa.ipac.caltech.edu/TAP/sync"
 S3 = "https://nasa-irsa-spherex.s3.amazonaws.com/"
+SIMBAD = "https://simbad.harvard.edu/simbad/sim-script"  # Harvard mirror of CDS SIMBAD
+J2000_UNIX = 946728000  # 2000-01-01 12:00 UTC as a Unix timestamp
 OUT_SCALE = 3.0  # arcsec per output pixel (SPHEREx native is ~6.15)
 HEADER_BYTES = 34560  # headers seen so far end at 25920-28800 bytes
 
@@ -61,6 +63,31 @@ def s3_url(uri):
 @app.get("/")
 def index():
     return FileResponse(HERE / "index.html")
+
+
+@app.get("/api/resolve")
+def resolve(name: str):
+    """Object name -> RA/Dec in degrees today, from the SIMBAD database.
+
+    SIMBAD gives the position at epoch 2000 plus the proper motion (mas/yr);
+    fast nearby objects have moved a lot since, so the position is moved to today.
+    """
+    name = " ".join(name.split())  # one line only: the name goes into a SIMBAD script
+    script = (
+        "output console=off script=off\n"
+        'format object "%COO(d;A D;ICRS;J2000;2000)|%PM(A D)"\n'
+        f"query id {name}"
+    )
+    text = http_get(f"{SIMBAD}?script={quote(script)}").text.strip()
+    found = re.fullmatch(r"([\d.]+) +([-+][\d.]+)\|(\S+) +(\S+)", text)
+    if not found:
+        raise HTTPException(404, "SIMBAD does not know this name")
+    ra, dec = float(found[1]), float(found[2])
+    if found[3] != "~":  # "~" means no proper motion is known
+        years = (time.time() - J2000_UNIX) / (365.25 * 86400)
+        ra += float(found[3]) * years / 3.6e6 / np.cos(np.radians(dec))
+        dec += float(found[4]) * years / 3.6e6
+    return {"ra": round(ra, 5), "dec": round(dec, 5)}
 
 
 @app.get("/api/search")

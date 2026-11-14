@@ -39,6 +39,13 @@
   <section>
     <h1>SPHEREx Blink</h1>
     <p class="sub">Watch a patch of sky change over time in SPHEREx near-infrared images.</p>
+    <form class="panel" id="nameform" style="margin-bottom:12px">
+      <label for="name" style="margin-top:0">Object name (optional, looked up in SIMBAD)</label>
+      <div class="row" style="grid-template-columns:1fr 70px">
+        <input id="name" required placeholder="e.g. Barnard's star">
+        <button>Find</button>
+      </div>
+    </form>
     <form class="panel" id="form">
       <div class="row">
         <div><label for="ra">RA (degrees)</label><input id="ra" required inputmode="decimal"></div>
@@ -213,6 +220,20 @@ for (const [name, [ra, dec, band]] of Object.entries(PRESETS)) {
   $("presets").append(b);
 }
 $("form").onsubmit = e => { e.preventDefault(); load(); };
+// Name search: ask the server for today's coordinates, fill the RA/Dec boxes, then load as usual.
+$("nameform").onsubmit = async e => {
+  e.preventDefault();
+  $("status").textContent = "Looking up the name in SIMBAD…";
+  try {
+    const res = await fetch(`/api/resolve?name=${encodeURIComponent($("name").value)}`);
+    if (!res.ok) { $("status").textContent = "SIMBAD does not know this name. Try another spelling or enter coordinates."; return; }
+    const pos = await res.json();
+    $("ra").value = pos.ra; $("dec").value = pos.dec;
+    load();
+  } catch (err) {
+    $("status").textContent = "Could not reach SIMBAD: " + err.message;
+  }
+};
 $("coadd").onchange = rebuild;
 $("hi").oninput = () => { $("hiv").textContent = $("hi").value; draw(); };
 $("speed").oninput = () => { $("speedv").textContent = $("speed").value; if (timer) play(true); };
