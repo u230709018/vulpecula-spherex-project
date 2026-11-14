@@ -19,6 +19,8 @@ Tarayıcıda **http://localhost:8000** adresini açın. Demo hedefleri (`data/re
   .venv/bin/python scripts/warm_cache.py 5
   ```
 
+- **Kodun anlatımı** (tüm repo, gerçek kod parçalarıyla, Türkçe): `scripts/make_code_walkthrough.py` çalıştırılınca `output/kod_anlatimi.html` üretilir; tarayıcıdan PDF olarak yazdırılabilir. Kod değişince yeniden çalıştırın.
+
 ## 2. Dosya haritası: kim nereye bakar
 
 | Rol | Dosyalar |
